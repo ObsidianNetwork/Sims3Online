@@ -1,0 +1,36 @@
+version: 2
+updates:
+  # GitHub Actions used by the workflows: one PR a month for all of them.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    groups:
+      github-actions:
+        patterns: ["*"]
+
+  # NuGet packages of the .NET projects. Sentry's packages move together; other minor and patch
+  # updates share one PR; a major update gets its own PR so it is reviewed on its own.
+  - package-ecosystem: "nuget"
+    directories:
+      - "/DedicatedServer"
+      - "/DedicatedServer.Tests"
+      - "/SimsOnline.Client"
+      - "/SimsOnline.TestClient"
+    schedule:
+      interval: "monthly"
+    groups:
+      sentry:
+        patterns: ["Sentry*"]
+      nuget-minor-and-patch:
+        update-types: ["minor", "patch"]
+
+  # Python packages: requirements-dev.txt at the root, and the hash-locked set the
+  - package-ecosystem: "pip"
+    directories:
+      - "/"
+    schedule:
+      interval: "monthly"
+    groups:
+      python:
+        patterns: ["*"]

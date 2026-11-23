@@ -1,0 +1,30 @@
+{
+  "name": "two-social",
+  "summary": "Player 2 has Pablo chat with Jennifer (a paired social, player 1's Sim the target): it runs and ends cleanly in both games",
+  "clients": [
+    1,
+    2
+  ],
+  "steps": [
+    "cpick:2:sim:Jennifer SocialInteractionA --name Chat",
+    "until:server:Pablo:SocialInteraction:30",
+    "until:server:Pablo:^(?:[^|]*\\|){9}(?![^|]*SocialInteraction):60",
+    "hud:2:15:actor=Pablo[^;]*; hudQueue=0;",
+    "sleep:4"
+  ],
+  "watch": {
+    "sims": [
+      "Jennifer",
+      "Pablo"
+    ],
+    "seconds": 120,
+    "capture": true
+  },
+  "after": [
+    "sims:Jennifer Pablo --machines",
+    "nonotice:2:Can't do",
+    "drivers",
+    "capture:Pablo:2"
+  ],
+  "expect": "pass"
+}

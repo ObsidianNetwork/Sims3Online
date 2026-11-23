@@ -1,0 +1,17 @@
+# Normalize text files to LF in the repository
+* text=auto
+
+# Hash-pinned analysis inputs must have identical bytes in every checkout.
+
+# The demo harness verifies exact source bytes when producing its evidence manifest.
+
+# Authored private-attachment vectors have a byte-pinned cross-language digest.
+testdata/card55-private-attachment-v1.json text eol=lf
+
+
+# Binary files
+*.dll binary
+*.exe binary
+*.png binary
+*.jpg binary
+*.ico binary

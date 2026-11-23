@@ -1,0 +1,2 @@
+CMD|42|JoinSession|42|7|616c696365|~	ACK|42|JoinSession
+CMD|45|NoSuchVerb|45|7	ERR|45|bad_line|NoSuchVerb|

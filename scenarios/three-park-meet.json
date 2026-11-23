@@ -1,0 +1,69 @@
+{
+  "name": "three-park-meet",
+  "summary": "stage 3 (the benchmark): three players of three families, Jennifer (Martinez, player 1), Iliana (Langerak, player 2) and Gunther (Goth, player 3), placed together at Central Park (scenarios/start/park.json): every game shows all three on the park lot, drawn at full LOD; each pair exchanges a social (Jennifer to Iliana, Iliana to Gunther, Gunther to Jennifer), each runs and ends on the server, each player's HUD shows only its own Sim and ends empty, no refusal reaches any player, and the three relationships are read on all four games",
+  "clients": [
+    1,
+    2,
+    3
+  ],
+  "household": [
+    "Jennifer",
+    "Pablo",
+    "Iliana",
+    "Gunther"
+  ],
+  "start": "park",
+  "players": {
+    "2": "Iliana",
+    "3": "Gunther"
+  },
+  "steps": [
+    "probe:server:scratch/ParkStrangersProbe.cs",
+    "probe:1:scratch/ParkStrangersProbe.cs",
+    "probe:2:scratch/ParkStrangersProbe.cs",
+    "probe:3:scratch/ParkStrangersProbe.cs",
+    "until:server:Jennifer:^(?:[^|]*\\|){2}9038443088839058560\\|:30",
+    "until:server:Iliana:^(?:[^|]*\\|){2}9038443088839058560\\|:30",
+    "until:server:Gunther:^(?:[^|]*\\|){2}9038443088839058560\\|:30",
+    "until:client1:Iliana:^(?:[^|]*\\|){2}{server:2}\\|(?:[^|]*\\|){13}0\\|high\\b:60",
+    "until:client1:Gunther:^(?:[^|]*\\|){2}{server:2}\\|(?:[^|]*\\|){13}0\\|high\\b:60",
+    "until:client2:Jennifer:^(?:[^|]*\\|){2}{server:2}\\|(?:[^|]*\\|){13}0\\|high\\b:60",
+    "until:client2:Gunther:^(?:[^|]*\\|){2}{server:2}\\|(?:[^|]*\\|){13}0\\|high\\b:60",
+    "until:client3:Jennifer:^(?:[^|]*\\|){2}{server:2}\\|(?:[^|]*\\|){13}0\\|high\\b:60",
+    "until:client3:Iliana:^(?:[^|]*\\|){2}{server:2}\\|(?:[^|]*\\|){13}0\\|high\\b:60",
+    "households:Martinez Langerak Goth --pair Jennifer+Iliana --pair Iliana+Gunther --pair Gunther+Jennifer",
+    "capture:Jennifer:1",
+    "cpick:1:sim:Iliana SocialInteractionA --name Friendly",
+    "hud:2:5:actor=Iliana[^;]*; hudQueue=0;",
+    "hud:3:5:actor=Gunther[^;]*; hudQueue=0;",
+    "until:server:Jennifer:SocialInteraction:45",
+    "until:server:Jennifer:^(?:[^|]*\\|){9}(?![^|]*SocialInteraction):60",
+    "hud:1:15:actor=Jennifer[^;]*; hudQueue=0;",
+    "cpick:2:sim:Gunther SocialInteractionA --name Friendly",
+    "until:server:Iliana:SocialInteraction:45",
+    "until:server:Iliana:^(?:[^|]*\\|){9}(?![^|]*SocialInteraction):60",
+    "hud:2:15:actor=Iliana[^;]*; hudQueue=0;",
+    "cpick:3:sim:Jennifer SocialInteractionA --name Friendly",
+    "until:server:Gunther:SocialInteraction:45",
+    "until:server:Gunther:^(?:[^|]*\\|){9}(?![^|]*SocialInteraction):60",
+    "hud:3:15:actor=Gunther[^;]*; hudQueue=0;",
+    "sleep:4"
+  ],
+  "watch": {
+    "sims": [
+      "Jennifer",
+      "Iliana",
+      "Gunther"
+    ],
+    "seconds": 420
+  },
+  "after": [
+    "sims:Jennifer Iliana Gunther --machines",
+    "households:Martinez Langerak Goth --pair Jennifer+Iliana --pair Iliana+Gunther --pair Gunther+Jennifer",
+    "nonotice:1:Can't do",
+    "nonotice:2:Can't do",
+    "nonotice:3:Can't do",
+    "drivers"
+  ],
+  "expect": "known-failing: the relationship's long-term state is not carried live (run 20261022-051318): after the three Friendly Introductions the server reads each pair 2.1 Acquaintance and all three clients 2.1 Stranger (liking arrives, the state does not); every placement, shown/LOD, social, HUD and nonotice check passes on four games, and each client shows one client-only idle return (back to the standing idle 29-62 ms after it left it) Ticket: ."
+}

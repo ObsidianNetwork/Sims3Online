@@ -1,0 +1,24 @@
+{
+  "name": "idle-repair-stand-walk",
+  "summary": "kill Jennifer's borrowed standing idle driver midstream through ISacsProxy.ReleaseDriver, leaving its mapping and posture intact. The premise proves oldMapped>0 and oldValid=0 without repairing it. Baseline idleRepairStream after that kill, then sit, stand and walk to another seat under the motion watch. The stream must repair the dead driver and no client-only restart may follow its repair. Only the idle driver is released, so unrelated replay machines survive.",
+  "steps": [
+    "premise:1:borrowed-idle:Jennifer",
+    "act:Jennifer near:ChairDining Sit --name Sit --wait 40",
+    "sleep:6",
+    "act:Jennifer --clear --stand",
+    "sleep:4",
+    "act:Jennifer near:Loveseat Sit --name Sit --wait 40",
+    "sleep:6"
+  ],
+  "watch": {
+    "sims": [
+      "Jennifer"
+    ],
+    "seconds": 120
+  },
+  "after": [
+    "sims:Jennifer --machines",
+    "rose:client:SACS_RECORDER status:idleRepairStream"
+  ],
+  "expect": "known-failing: (2026-11-10), FC ruling: run 20261110-204629 is a real failure candidate. After a borrowed idle was proved dead (oldValid=0, oldMapped=1), the stream never repaired it: ownRepairs stayed 39, idleRepairStream stayed 10 and replay failures rose 7->11 (+4). Run 20261110-210312 only repaired through the premise itself and cannot close this finding. Re-run once after w1's BootstrapStandingIdle fix merges, requiring a stream repair after the kill and no client-only restart (internal documentation section 4.2)."
+}

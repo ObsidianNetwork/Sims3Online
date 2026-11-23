@@ -1,0 +1,232 @@
+name: build-and-test
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A new push to a pull request cancels its superseded run; runs on main always finish.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Build client mirror project
+        run: dotnet build SimsOnline.Client/SimsOnline.Client.csproj
+
+      - name: Build test client
+        run: dotnet build SimsOnline.TestClient/SimsOnline.TestClient.csproj
+
+      - name: Build test project (pulls in DedicatedServer via ProjectReference)
+        run: dotnet build DedicatedServer.Tests/SimsOnline.DedicatedServer.Tests.csproj
+
+      - name: Run custom test suite
+        run: dotnet run --project DedicatedServer.Tests/SimsOnline.DedicatedServer.Tests.csproj -- --filter all
+
+  sidecar-tests:
+    # The NUnit suite drives a fresh loopback Rust authority daemon per test.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Build Rust authority daemon
+        run: >-
+          cargo +stable build --release
+          --manifest-path rust/sim96_kernel_cleanroom/Cargo.toml
+          --bin simlink_authority_daemon --target-dir "$RUNNER_TEMP/sidecar-target"
+
+      - name: Run the full NUnit sidecar suite
+        env:
+          SIMSONLINE_SIDECAR_DAEMON: ${{ runner.temp }}/sidecar-target/release/simlink_authority_daemon
+        run: |
+          test -x "$SIMSONLINE_SIDECAR_DAEMON"
+          dotnet test DedicatedServer.Tests/DedicatedServer.Tests.csproj \
+            --logger "console;verbosity=normal" -- RunConfiguration.TreatNoTestsAsError=true
+
+  python-tools:
+    # Lint and tests for the Python and PowerShell tooling in scripts/ and tools/. The same
+    # commands run locally: python scripts/dev.py check. Its EXCLUDED_TESTS list says what is
+    # skipped here and why.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Python 3.12 (the oldest supported)
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Setup .NET 8 (sim133_managed_inventory_test builds a small .NET tool)
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Install tooling dependencies
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Lint (ruff, PowerShell parse)
+        run: python scripts/dev.py lint
+
+      - name: Test (pytest, script self-tests, stopgap and slice-table checks, --help check)
+        run: python scripts/dev.py test
+
+  proprietary-input-guard:
+    # Fails a change that adds proprietary game input (game binaries, packages,
+    # databases, bulk disassembly or pseudocode) or private data (a home-folder path, a secret).
+    # Scans the files the change adds or modifies; all binary inputs, including
+    # locally supplied Sims 3 reference assemblies, are rejected.
+    # Source policy is enforced by scripts/proprietary_input_guard.py.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository (full history, to diff against the base)
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Scan changed files for proprietary inputs
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ "$EVENT_NAME" = pull_request ]; then
+            base="origin/$BASE_REF"
+          elif [ -n "$BEFORE" ] && [ "$BEFORE" != 0000000000000000000000000000000000000000 ]; then
+            base="$BEFORE"
+          else
+            base="origin/main"
+          fi
+          python3 scripts/proprietary_input_guard.py --root . --format github
+
+  mod-compile-gate:
+    # Compile-only gate for the FULL .NET 2 in-game host mod sources. The net8
+    # suite above only covers the PURE source-linked files; this compiles the
+    # engine-coupled rest against maintainer-supplied local references.
+    # These are intentionally not distributed pending rights verification.
+    # Needs .NET Framework 2.0 csc.exe, hence a Windows runner.
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Check for locally supplied reference assemblies
+        id: references
+        shell: pwsh
+        run: |
+          $required = @(
+            "refs/sims3/scripts_00.dll",
+            "refs/sims3/scripts_01.dll",
+            "refs/sims3/scripts_02.dll",
+            "refs/sims3/gameplay_00.dll",
+            "refs/sims3/gameplay_01.dll",
+            "refs/sims3/gameplay_02.dll",
+            "refs/sims3/gameplay_03.dll"
+          )
+          $missing = @($required | Where-Object { -not (Test-Path $_) })
+          if ($missing.Count -eq 0) {
+            "available=true" >> $env:GITHUB_OUTPUT
+          } else {
+            "available=false" >> $env:GITHUB_OUTPUT
+            Write-Host "Mod compile gate not run: locally supplied Sims 3 reference assemblies are absent."
+          }
+
+      - name: Compile full SimsOnlineServerHostMod sources (.NET 2 csc)
+        if: steps.references.outputs.available == 'true'
+        shell: pwsh
+        run: |
+          & scripts/check-mod-compile.ps1 -Strict
+          exit $LASTEXITCODE
+
+      - name: Report mod compile gate unavailable
+        if: steps.references.outputs.available != 'true'
+        run: |
+          echo "Skipped: public checkout intentionally excludes Sims 3 reference assemblies pending rights verification."
+
+  rust-tests:
+    name: Rust Crates Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Sims3Online
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Test Rust crates
+        run: |
+          cargo test --manifest-path rust/sim96_kernel_cleanroom/Cargo.toml
+          cargo test --manifest-path rust/simlink_bridge/Cargo.toml
+          cargo test --manifest-path rust/simlink_headless_server/Cargo.toml
+
+  simlink-windows:
+    # Builds the SimLink sidecar (native x86, CMake + MSVC) with the repo's own build command, then runs the
+    # SimLink cases of the .NET suite, which skip on Linux: named memory maps, and the native ring code
+    # (SimLink/build/Release/simlink_selftest.exe) against the .NET reader. --fail-on-skip fails the job if a
+    # case still skips here. windows-latest has Visual Studio 2026 only, hence the generator (sidecar.py's
+    # default is Visual Studio 2022).
+    runs-on: windows-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Python 3.12 (the version python-tools uses)
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Build SimLink (x86 Release)
+        run: python scripts/sidecar.py build --generator "Visual Studio 18 2026"
+
+      - name: Build test project (pulls in DedicatedServer via ProjectReference)
+        run: dotnet build DedicatedServer.Tests/SimsOnline.DedicatedServer.Tests.csproj
+
+      - name: Run the SimLink cases, failing on any skip
+        run: dotnet run --project DedicatedServer.Tests/SimsOnline.DedicatedServer.Tests.csproj -- --filter SimLink --fail-on-skip

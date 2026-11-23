@@ -1,0 +1,16 @@
+{
+  "name": "puddle-sound",
+  "summary": "A puddle grows on the tile 2 m in front of Jennifer through the game's own World.SetPuddle (scratch/PuddleSoundProbe.cs): the client hears puddle_grow there too (an Au|0|t point-sound line, seam-gaps row 4) and draws the puddle (Wl)",
+  "steps": [
+    "probe:server:scratch/PuddleSoundProbe.cs",
+    "sleep:3",
+    "capture:Jennifer:1",
+    "probe:server:scratch/PuddleClearProbe.cs",
+    "sleep:2"
+  ],
+  "after": [
+    "rose:server:SACS_RECORDER status:pointLines",
+    "rose:client:SACS_REPLAY 00:points"
+  ],
+  "expect": "pass"
+}

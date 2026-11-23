@@ -1,0 +1,15 @@
+{
+  "name": "holiday-lights",
+  "summary": "Holiday house lights on Jennifer's lot through the game's own Lot.SetHolidayHouseLightsColor, then the lot's snow refresh (scratch/HolidayLightsProbe.cs): the client draws the lights (World.LotAreHolidayHouseLightsEnabled on its game) and replays both lot-keyed Wl lines (seam-gaps row 8)",
+  "steps": [
+    "probe:server:scratch/HolidayLightsProbe.cs",
+    "sleep:3",
+    "probe:1:scratch/HolidayLightsCheckProbe.cs",
+    "capture:Jennifer:1"
+  ],
+  "after": [
+    "assert:client:SACS_REPLAY 00:world=[^;]*lastLot:LotSnowUpdate",
+    "probe:server:scratch/HolidayLightsOffProbe.cs"
+  ],
+  "expect": "pass"
+}

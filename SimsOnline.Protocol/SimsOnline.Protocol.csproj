@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    card 57 ruling 4 (docs/engine/sim96_specs/57_headless_server_binary_and_public_line_protocol_v1.md §I):
+    the public protocol types (ClientCommand, ServerEvent and the records they carry) and the JSON codec
+    (PublicProtocolCodec) live here, referenced by SimsOnline.DedicatedServer, SimsOnline.Client and the tests.
+    The namespaces stay exactly as they were (SimsOnline.DedicatedServer.Protocol, and the wire-carried
+    LotLocalAuthorityMode enum's SimsOnline.DedicatedServer.Mirroring) so the move is project references only,
+    with no edits to any using. The JSON wire is byte-pinned by DedicatedServer.Tests/WireJsonPinningTests.cs.
+  -->
+  <PropertyGroup>
+    <AssemblyName>SimsOnline.Protocol</AssemblyName>
+    <RootNamespace>SimsOnline.DedicatedServer.Protocol</RootNamespace>
+    <Description>Public client-facing protocol types and codec for SimsOnline (The Sims 3 multiplayer mod).</Description>
+  </PropertyGroup>
+</Project>

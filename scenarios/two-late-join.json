@@ -1,0 +1,25 @@
+{
+  "name": "two-late-join",
+  "summary": "Player 2's game restarts and joins while Jennifer browses on her phone: client 1 sees nothing change",
+  "clients": [
+    1
+  ],
+  "steps": [
+    "act:Jennifer inv:PhoneSmart BrowseTheWeb --clear --wait 40",
+    "sleep:3",
+    "rejoin:2",
+    "sleep:5"
+  ],
+  "watch": {
+    "sims": [
+      "Jennifer"
+    ],
+    "seconds": 600
+  },
+  "after": [
+    "sims:Jennifer --machines --props",
+    "drivers",
+    "capture:Jennifer:2"
+  ],
+  "expect": "pass"
+}

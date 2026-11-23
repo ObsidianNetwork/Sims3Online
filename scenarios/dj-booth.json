@@ -1,0 +1,23 @@
+{
+  "name": "dj-booth",
+  "summary": "Jennifer plays Funk at a DJ booth placed near her (scratch/DjBoothPlaceProbe.cs): the client plays the server's music, a sound array (Au a, seam-gaps row 3). The interaction row is --known: the client copy of Jennifer runs a BrowseTheWeb of its own (a client runs no interactions), a client defect older than batch A (late-join-phone runs 20261015-025937 and 20261021-024712; fridge-snack 2026-10-31)",
+  "steps": [
+    "probe:server:scratch/DjBoothPlaceProbe.cs",
+    "act:Jennifer id:{dj} DoPlay --name Funk --wait 40",
+    "sleep:20"
+  ],
+  "watch": {
+    "sims": [
+      "Jennifer"
+    ],
+    "seconds": 50,
+    "capture": true
+  },
+  "after": [
+    "sims:Jennifer --machines --props --known interaction",
+    "capture:Jennifer:2",
+    "assert:client:SACS_REPLAY 00:client:played:\\d+/failed:\\d+/arrays:[1-9]",
+    "probe:server:scratch/DjBoothRemoveProbe.cs"
+  ],
+  "expect": "pass"
+}

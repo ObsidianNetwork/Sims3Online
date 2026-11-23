@@ -1,0 +1,38 @@
+{
+  "name": "two-social-cut",
+  "summary": "Player 2's chat with Jennifer, cancelled from the HUD, then again interrupted by player 1 seating Jennifer: no stuck animation or queue entry",
+  "clients": [
+    1,
+    2
+  ],
+  "steps": [
+    "cpick:2:sim:Jennifer SocialInteractionA --name Chat",
+    "until:server:Pablo:SocialInteraction:30",
+    "cpick:2:--cancel 0",
+    "until:server:Pablo:^(?:[^|]*\\|){9}(?![^|]*SocialInteraction):20",
+    "hud:2:15:actor=Pablo[^;]*; hudQueue=0;",
+    "sleep:3",
+    "cpick:2:sim:Jennifer SocialInteractionA --name Chat",
+    "until:server:Pablo:SocialInteraction:30",
+    "cpick:1:ChairDining Sit --near Jennifer",
+    "until:server:Pablo:^(?:[^|]*\\|){9}(?![^|]*SocialInteraction):40",
+    "until:server:Jennifer:SittingPosture:45",
+    "hud:2:15:actor=Pablo[^;]*; hudQueue=0;",
+    "sleep:4"
+  ],
+  "watch": {
+    "sims": [
+      "Jennifer",
+      "Pablo"
+    ],
+    "seconds": 200,
+    "capture": true
+  },
+  "after": [
+    "sims:Jennifer Pablo --machines",
+    "nonotice:2:Can't do",
+    "drivers",
+    "capture:Pablo:2"
+  ],
+  "expect": "pass"
+}

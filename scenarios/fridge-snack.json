@@ -1,0 +1,20 @@
+{
+  "name": "fridge-snack",
+  "summary": "Jennifer gets a quick meal from the fridge (walk, fridge, counter)",
+  "steps": [
+    "act:Jennifer near:Fridge Fridge_Have --wait 40",
+    "sleep:15"
+  ],
+  "watch": {
+    "sims": [
+      "Jennifer"
+    ],
+    "seconds": 35,
+    "capture": true
+  },
+  "after": [
+    "sims:Jennifer --machines --props",
+    "capture:Jennifer:2"
+  ],
+  "expect": "known-failing: the food props near Jennifer differ (FoodProp in a bowl/plate set; walk start, end and facing were fixed 2026-10-15) Ticket: ."
+}

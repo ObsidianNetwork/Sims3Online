@@ -1,0 +1,40 @@
+{
+  "name": "conv-client-leave",
+  "summary": "n14: Jennifer and Iliana talk on the server (the engine's own conversation); on client 1 the HUD's own leave of Jennifer's conversation item (HudModel.CancelSocializing) parks a leave intent, the client sends leave_conversation, the server runs the engine's cancel, and the Cv stream ends the conversation on the server and the client; no refusal reaches the player and no social from Jennifer to Iliana is left in the server's queue",
+  "clients": [
+    1
+  ],
+  "household": [
+    "Jennifer",
+    "Pablo",
+    "Iliana",
+    "Gunther"
+  ],
+  "start": "park",
+  "steps": [
+    "probe:server:scratch/ConvPairProbe.cs",
+    "act:Jennifer sim:Iliana social:Chat --wait 40",
+    "until:server:Jennifer:^(?:[^|]*\\|){6}SocializingPosture\\|:20",
+    "probe:server:scratch/ConvActiveProbe.cs",
+    "probe:1:scratch/ConversationProbe.cs",
+    "probe:1:scratch/ConvHudLeaveProbe.cs",
+    "until:server:Jennifer:^(?:[^|]*\\|){9}(?![^|]*SocialInteraction):30",
+    "sleep:4",
+    "probe:1:scratch/ConversationProbe.cs",
+    "probe:server:scratch/ConversationProbe.cs"
+  ],
+  "watch": {
+    "sims": [
+      "Jennifer",
+      "Iliana"
+    ],
+    "seconds": 60
+  },
+  "after": [
+    "assert:client:probe scratch/ConversationProbe.cs:convs\\s*=\\s*Gunther:[^,]*,Iliana:none,Jennifer:none,",
+    "assert:server:probe scratch/ConversationProbe.cs:convs\\s*=\\s*Gunther:[^,]*,Iliana:none,Jennifer:none,",
+    "rose:client:SACS_REPLAY 00:leaveIntentsSent",
+    "nonotice:1:Can't do"
+  ],
+  "expect": "pass"
+}

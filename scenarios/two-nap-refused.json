@@ -1,0 +1,33 @@
+{
+  "name": "two-nap-refused",
+  "summary": "Player 1's Jennifer sits on the home loveseat; on the server the loveseat is then in use and Nap fails its test there, but player 2's copy of the loveseat is not in use (the mod does not mirror GameObject.InUse), so player 2's menu offers Nap. Player 2 picks Nap: the server refuses it (Rf line), and player 2's menu must then show Nap greyed (the fork's menu-refusal slice). Jennifer then stands: the server's test passes again, the server clears the refusal and both menus must agree on Nap (no stale grey)",
+  "clients": [
+    1,
+    2
+  ],
+  "steps": [
+    "cpick:1:id:7787005372684539664 Sit",
+    "until:server:Jennifer:SittingPosture:45",
+    "sleep:3",
+    "cpick:2:id:7787005372684539664 Nap --name Nap",
+    "notice:2:20:Can't do",
+    "sleep:3",
+    "menudiff:2:Pablo:id:7787005372684539664:only=Nap",
+    "probe:server:scratch/CancelAllProbe.cs",
+    "sleep:12",
+    "menudiff:2:Pablo:id:7787005372684539664:only=Nap"
+  ],
+  "watch": {
+    "sims": [
+      "Jennifer",
+      "Pablo"
+    ],
+    "seconds": 90,
+    "events": true
+  },
+  "after": [
+    "nonotice:1:Can't do",
+    "sims:Jennifer Pablo --props"
+  ],
+  "expect": "pass"
+}

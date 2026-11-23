@@ -1,0 +1,30 @@
+{
+  "name": "two-lots-late-join",
+  "summary": "Player 2's game restarts and joins while Pablo stands on 14 Sierra Tango Street: the joined copy is on that lot, where the server's Sim is, and drawn; client 1 sees nothing change",
+  "clients": [
+    1,
+    2
+  ],
+  "steps": [
+    "act:Pablo lot:7787005346371421056 GoToLot --clear --wait 30",
+    "until:server:Pablo:^(?:[^|]*\\|){2}7787005346371421056\\|:240",
+    "until:server:Pablo:^(?:[^|]*\\|){9}(?![^|]*GoToLot):60",
+    "rejoin:2",
+    "until:client2:Pablo:^(?:[^|]*\\|){2}7787005346371421056\\|:60",
+    "capture:Pablo:2",
+    "sleep:5"
+  ],
+  "watch": {
+    "sims": [
+      "Pablo",
+      "Jennifer"
+    ],
+    "seconds": 600,
+    "after": true
+  },
+  "after": [
+    "sims:Pablo Jennifer --machines",
+    "drivers"
+  ],
+  "expect": "pass"
+}

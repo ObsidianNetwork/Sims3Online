@@ -1,0 +1,17 @@
+{
+  "name": "two-paper-delivery",
+  "summary": "The paperboy comes on the server only. Every Service runs from Services.Simulate, so before the fork's world-services slice a client's own services run beside the server's. PaperboyTriggerProbe sets IntroTutorial.TriggerPaperboy on the server and on player 2's game, which makes NewspaperDelivery assign the paperboy to the active household's lot at its next turn (only NeedsAssignment clears the flag). objectdiff then waits until the server has a new Newspaper near the Sims, waits 30 s more, and fails when player 2 has a Newspaper the server has no object for (its own delivery) or the server's paper has no shown copy there. PaperboyTriggerHeldProbe last: the flag must still be set on player 2, because its services must not run; it clears the flag. Before the slice (cold-test-107, 20 h) player 2 cleared the flag within 1 s but made no paperboy or paper of its own, so the papers agree and only the last step fails; with the slice every step passes. The server's paperboy reaches the clients as a Sim copy (sim_spawned) once it fades in",
+  "clients": [
+    2
+  ],
+  "steps": [
+    "probe:server:scratch/PaperboyTriggerProbe.cs",
+    "probe:2:scratch/PaperboyTriggerProbe.cs",
+    "objectdiff:2:--types Newspaper --radius 40 --wait-new Newspaper:300 --settle 30",
+    "probe:2:scratch/PaperboyTriggerHeldProbe.cs"
+  ],
+  "after": [
+    "sims:Jennifer Pablo"
+  ],
+  "expect": "pass"
+}

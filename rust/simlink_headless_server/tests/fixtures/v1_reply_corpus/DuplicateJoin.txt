@@ -1,0 +1,2 @@
+CMD|42|JoinSession|42|7|616c696365|~	ACK|42|JoinSession
+CMD|43|JoinSession|43|8|616c696365|~	ERR|43|WrongPlayer|JoinSession|

@@ -1,0 +1,54 @@
+{
+  "name": "two-park-meet",
+  "summary": "stage 1: player 1's Jennifer (Martinez) and player 2's Iliana (Langerak), placed facing each other at the community park (scenarios/start/park.json, no travel), meet: every game shows both Sims on the park lot and drawn; Jennifer introduces herself, then Iliana chats back; each social runs and ends on the server, each HUD ends empty, no refusal reaches either player, and the Jennifer-Iliana relationship is read on the server and both clients before and after",
+  "clients": [
+    1,
+    2
+  ],
+  "household": [
+    "Jennifer",
+    "Pablo",
+    "Iliana"
+  ],
+  "start": "park",
+  "player2": "Iliana",
+  "steps": [
+    "probe:server:scratch/ParkStrangersProbe.cs",
+    "probe:1:scratch/ParkStrangersProbe.cs",
+    "probe:2:scratch/ParkStrangersProbe.cs",
+    "until:server:Jennifer:^(?:[^|]*\\|){2}9038443088839058560\\|:30",
+    "until:server:Iliana:^(?:[^|]*\\|){2}9038443088839058560\\|:30",
+    "until:client1:Jennifer:^(?:[^|]*\\|){2}{server:2}\\|(?:[^|]*\\|){13}0\\|high\\b:60",
+    "until:client1:Iliana:^(?:[^|]*\\|){2}{server:2}\\|(?:[^|]*\\|){13}0\\|high\\b:60",
+    "until:client2:Jennifer:^(?:[^|]*\\|){2}{server:2}\\|(?:[^|]*\\|){13}0\\|high\\b:60",
+    "until:client2:Iliana:^(?:[^|]*\\|){2}{server:2}\\|(?:[^|]*\\|){13}0\\|high\\b:60",
+    "households:Martinez Langerak --pair Jennifer+Iliana",
+    "capture:Jennifer:1",
+    "cpick:1:sim:Iliana SocialInteractionA --name Friendly",
+    "until:server:Jennifer:SocialInteraction:45",
+    "until:server:Jennifer:^(?:[^|]*\\|){9}(?![^|]*SocialInteraction):60",
+    "hud:1:15:actor=Jennifer[^;]*; hudQueue=0;",
+    "cpick:2:sim:Jennifer SocialInteractionA --name Chat",
+    "until:server:Iliana:SocialInteraction:45",
+    "until:server:Iliana:^(?:[^|]*\\|){9}(?![^|]*SocialInteraction):60",
+    "hud:2:15:actor=Iliana[^;]*; hudQueue=0;",
+    "until:client1:Iliana:^(?:[^|]*\\|){2}{server:2}\\|(?:[^|]*\\|){13}0\\|high\\b:20",
+    "until:client2:Jennifer:^(?:[^|]*\\|){2}{server:2}\\|(?:[^|]*\\|){13}0\\|high\\b:20",
+    "sleep:4"
+  ],
+  "watch": {
+    "sims": [
+      "Jennifer",
+      "Iliana"
+    ],
+    "seconds": 300
+  },
+  "after": [
+    "sims:Jennifer Iliana --machines",
+    "households:Martinez Langerak --pair Jennifer+Iliana",
+    "nonotice:1:Can't do",
+    "nonotice:2:Can't do",
+    "drivers"
+  ],
+  "expect": "pass"
+}

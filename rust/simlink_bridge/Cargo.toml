@@ -1,0 +1,35 @@
+[package]
+name = "simlink_bridge"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "card 56: the layout-v11 process-memory bridge driver in Rust (oracle: DedicatedServer/HostBridge/ProcessMemoryBridge.cs)"
+
+# Its own workspace, independent of rust/sim96_kernel_cleanroom (card 56 §A).
+[workspace]
+
+[lib]
+path = "src/lib.rs"
+
+# Outside src/bin because the repo-wide `**/bin/` ignore rule covers that path.
+[[bin]]
+name = "simlinkctl"
+path = "tools/simlinkctl.rs"
+
+# Card 56 §D U5: windows-sys is the only dependency. No dev-dependencies.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "=0.61.2", features = [
+    "Win32_Foundation",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_Memory",
+    "Win32_System_Threading",
+] }
+
+# Card 56 §G gate 1. `unsafe_code` is deny (not forbid) crate-wide so that src/ffi.rs alone can allow it;
+# every other source file carries its own #![forbid(unsafe_code)] (§D U1).
+[lints.rust]
+unsafe_code = "deny"
+unsafe_op_in_unsafe_fn = "deny"
+
+[lints.clippy]
+all = "deny"

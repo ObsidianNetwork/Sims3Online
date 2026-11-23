@@ -1,0 +1,33 @@
+{
+  "name": "two-hud",
+  "summary": "Each player's HUD lists only its own Sim's queue, and player 2's HUD cancel removes the server's entry",
+  "clients": [
+    1,
+    2
+  ],
+  "steps": [
+    "cpick:1:ChairDining Sit --near Jennifer",
+    "cpick:2:Loveseat Sit",
+    "hud:1:10:actor=Jennifer[^;]*; hudQueue=1;",
+    "hud:2:10:actor=Pablo[^;]*; hudQueue=1;",
+    "cpick:2:--cancel 0",
+    "until:server:Pablo:^(?:[^|]*\\|){9}(?![^|]*Sit):20",
+    "hud:2:15:actor=Pablo[^;]*; hudQueue=0;",
+    "until:server:Jennifer:SittingPosture:45",
+    "sleep:4"
+  ],
+  "watch": {
+    "sims": [
+      "Jennifer",
+      "Pablo"
+    ],
+    "seconds": 120
+  },
+  "after": [
+    "sims:Jennifer Pablo --machines",
+    "nonotice:1:Can't do",
+    "nonotice:2:Can't do",
+    "drivers"
+  ],
+  "expect": "pass"
+}

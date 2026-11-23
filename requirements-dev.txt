@@ -1,0 +1,11 @@
+# Python packages for the tooling in scripts/, and for its tests and lint.
+# Needs Python 3.12 or later. Install with:
+#   python -m pip install -r requirements-dev.txt
+
+# Used by the tools
+jsonschema[format-nongpl]==4.26.0    # evidence and schema validation
+pillow==13.0.0                       # screenshots (screenshots and layout verification)
+
+# Tests and lint
+pytest==9.2.0
+ruff==0.17.3

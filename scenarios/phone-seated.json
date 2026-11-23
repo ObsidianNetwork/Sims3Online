@@ -1,0 +1,22 @@
+{
+  "name": "phone-seated",
+  "summary": "Pablo sits on the loveseat, then browses on his phone there",
+  "steps": [
+    "act:Pablo near:Loveseat Sit --name Sit --wait 40",
+    "sleep:8",
+    "act:Pablo inv:Phone BrowseTheWeb --wait 40",
+    "sleep:6"
+  ],
+  "watch": {
+    "sims": [
+      "Pablo"
+    ],
+    "seconds": 45,
+    "capture": true
+  },
+  "after": [
+    "sims:Pablo --machines --props",
+    "capture:Pablo:2"
+  ],
+  "expect": "pass"
+}

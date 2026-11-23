@@ -1,0 +1,36 @@
+{
+  "name": "two-families-late-join",
+  "summary": "Player 2's game restarts and joins on Iliana while each family is at home: player 2 is on Iliana again, on the Langerak lot where the server's Iliana is, both clients read the server's funds for both families, and client 1 sees nothing change",
+  "clients": [
+    1,
+    2
+  ],
+  "household": [
+    "Jennifer",
+    "Pablo",
+    "Iliana"
+  ],
+  "start": "langeraks",
+  "player2": "Iliana",
+  "steps": [
+    "rejoin:2",
+    "until:client2:Iliana:^(?:[^|]*\\|){2}7787005346371421056\\|:60",
+    "hud:2:30:actor=Iliana[^;]*;",
+    "capture:Iliana:2",
+    "sleep:5"
+  ],
+  "watch": {
+    "sims": [
+      "Iliana",
+      "Jennifer"
+    ],
+    "seconds": 120,
+    "after": true
+  },
+  "after": [
+    "sims:Iliana Jennifer --machines",
+    "households:Martinez Langerak --pair Jennifer+Iliana",
+    "drivers"
+  ],
+  "expect": "pass"
+}

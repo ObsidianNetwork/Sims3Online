@@ -1,0 +1,59 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write  # only to create the draft release; the token is not kept in the checkout
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Build and run the test suite
+        run: |
+          dotnet build SimsOnline.Client/SimsOnline.Client.csproj
+          dotnet build DedicatedServer.Tests/SimsOnline.DedicatedServer.Tests.csproj
+          dotnet run --project DedicatedServer.Tests/SimsOnline.DedicatedServer.Tests.csproj -- --filter all
+
+      - name: Publish DedicatedServer (Windows x64)
+        run: dotnet publish DedicatedServer/SimsOnline.DedicatedServer.csproj -c Release -r win-x64 --self-contained false -o ./dist/DedicatedServer-win-x64
+
+      - name: Publish SimsOnline.Client (Windows x64)
+        run: dotnet publish SimsOnline.Client/SimsOnline.Client.csproj -c Release -r win-x64 --self-contained false -o ./dist/SimsOnline.Client-win-x64
+
+      - name: Publish DedicatedServer (Linux x64)
+        run: dotnet publish DedicatedServer/SimsOnline.DedicatedServer.csproj -c Release -r linux-x64 --self-contained false -o ./dist/DedicatedServer-linux-x64
+
+      - name: Package Release Archives
+        # The tag name comes from whoever pushed the tag: pass it as data, never interpolate it into the script.
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          mkdir -p ./release-artifacts
+          cp LICENSE README.md ./dist/
+          (cd ./dist && zip -qr "../release-artifacts/Sims3Online-win-x64-${RELEASE_TAG}.zip" DedicatedServer-win-x64 SimsOnline.Client-win-x64 LICENSE README.md)
+          tar -czvf "./release-artifacts/Sims3Online-linux-x64-${RELEASE_TAG}.tar.gz" -C ./dist DedicatedServer-linux-x64 LICENSE README.md
+          (cd ./release-artifacts && sha256sum * > SHA256SUMS.txt)
+
+      - name: Create GitHub Draft Release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: ./release-artifacts/*
+          draft: true
+          generate_release_notes: true

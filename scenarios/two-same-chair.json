@@ -1,0 +1,30 @@
+{
+  "name": "two-same-chair",
+  "summary": "Both players pick the same dining chair at once: the server seats Jennifer, and player 2 is told Pablo can't",
+  "clients": [
+    1,
+    2
+  ],
+  "steps": [
+    "cpick:1:ChairDining Sit --near Jennifer",
+    "cpick:2:ChairDining Sit --near Jennifer",
+    "until:server:Jennifer:SittingPosture:45",
+    "notice:2:45:Can't do .Sit",
+    "sleep:4"
+  ],
+  "watch": {
+    "sims": [
+      "Jennifer",
+      "Pablo"
+    ],
+    "seconds": 120,
+    "capture": true
+  },
+  "after": [
+    "sims:Jennifer Pablo --machines",
+    "nonotice:1:Can't do",
+    "drivers",
+    "capture:Pablo:2"
+  ],
+  "expect": "pass"
+}

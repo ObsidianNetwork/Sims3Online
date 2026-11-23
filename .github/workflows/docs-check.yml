@@ -1,0 +1,57 @@
+name: docs-check
+
+on:
+  pull_request:
+  push:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-check-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  docs-check:
+    # Validate public docs and ensure the published site builds without warnings.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Install documentation dependencies
+        run: python -m pip install -r requirements-docs.txt
+
+      - name: Check public documentation boundary
+        run: python scripts/proprietary_input_guard.py --root . --format github
+
+      - name: Check public documentation links
+        run: >-
+          python scripts/check_docs.py --anchors --strict README.md CONTRIBUTING.md
+          SECURITY.md CODE_OF_CONDUCT.md docs Assets/README.md credentials/README.md
+          refs/sims3/README.md scenarios/README.md signing/README.md SimLink/README.md
+          SimsOnlineServerHostMod/README.md rust/simlink_bridge/README.md
+          rust/simlink_headless_server/README.md
+          rust/simlink_headless_server/tests/fixtures/README.md tools/tester_kit/README.md
+
+      - name: Test the checker
+        run: python -m unittest scripts.check_docs_test
+
+      - name: Build documentation site
+        run: mkdocs build --strict
+
+      - name: Upload built documentation for preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: documentation-site
+          path: site/
+          if-no-files-found: error
+          retention-days: 7

@@ -1,0 +1,38 @@
+{
+  "name": "two-lots-apart",
+  "summary": "With Pablo on 14 Sierra Tango Street and Jennifer at home, each player picks for its own Sim: each HUD lists only its own Sim's queue, player 2's cancel removes the server's entry, and both copies stay drawn",
+  "clients": [
+    1,
+    2
+  ],
+  "steps": [
+    "act:Pablo lot:7787005346371421056 GoToLot --clear --wait 30",
+    "until:server:Pablo:^(?:[^|]*\\|){2}7787005346371421056\\|:240",
+    "until:server:Pablo:^(?:[^|]*\\|){9}(?![^|]*GoToLot):60",
+    "cpick:1:ChairDining Sit --near Jennifer",
+    "cpick:2:inv:PhoneSmart BrowseTheWeb",
+    "hud:1:10:actor=Jennifer[^;]*; hudQueue=1;",
+    "hud:2:10:actor=Pablo[^;]*; hudQueue=1;",
+    "until:server:Jennifer:SittingPosture:45",
+    "until:server:Pablo:BrowseTheWeb:45",
+    "capture:Pablo:2",
+    "cpick:2:--cancel 0",
+    "until:server:Pablo:^(?:[^|]*\\|){9}(?![^|]*BrowseTheWeb):30",
+    "hud:2:15:actor=Pablo[^;]*; hudQueue=0;",
+    "sleep:4"
+  ],
+  "watch": {
+    "sims": [
+      "Pablo",
+      "Jennifer"
+    ],
+    "seconds": 420
+  },
+  "after": [
+    "sims:Pablo Jennifer --machines",
+    "nonotice:1:Can't do",
+    "nonotice:2:Can't do",
+    "drivers"
+  ],
+  "expect": "known-failing: every step passes since the inventory-pick fix (player 2's Browse the Web runs on the server, HUD 1 then 0 on cancel); the motion fails because GoToLot drives: the server's Pablo gets in a vehicle (GetInVehicleRouteAction, SittingInVehicle.Idle) and moves at 15 to 26 m/s, and the client's copy jumps up to 145 m in half a second by 'mirror posture snap' during the drive (run 20261021-222834, scenarios.py explain two-lots-walk, 2026-10-21) Tickets: (vehicle presentation), ."
+}

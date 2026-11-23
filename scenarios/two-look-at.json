@@ -1,0 +1,33 @@
+{
+  "name": "two-look-at",
+  "summary": "Player 2 has Pablo chat with Jennifer: on every game the puppets look where the server's Sims look (the server's Jennifer and Pablo at each other; each client's puppet copy has no look-at of its own and the stream's Lk look-at is on its partner: scratch/LookAtCompareProbe.cs; seam-gaps row 2)",
+  "clients": [
+    1,
+    2
+  ],
+  "steps": [
+    "cpick:2:sim:Jennifer SocialInteractionA --name Chat",
+    "until:server:Pablo:SocialInteraction:30",
+    "sleep:3",
+    "probe:server:scratch/LookAtCompareProbe.cs",
+    "probe:1:scratch/LookAtCompareProbe.cs",
+    "probe:2:scratch/LookAtCompareProbe.cs",
+    "until:server:Pablo:^(?:[^|]*\\|){9}(?![^|]*SocialInteraction):60",
+    "sleep:3"
+  ],
+  "watch": {
+    "sims": [
+      "Jennifer",
+      "Pablo"
+    ],
+    "seconds": 90,
+    "capture": true
+  },
+  "after": [
+    "sims:Jennifer Pablo --machines",
+    "assert:server:SACS_RECORDER status:lookat=installed:1,lines:[1-9]",
+    "assert:client1:SACS_REPLAY 00:lookat=[^;]*replayed:[1-9]",
+    "assert:client2:SACS_REPLAY 00:lookat=[^;]*replayed:[1-9]"
+  ],
+  "expect": "pass"
+}

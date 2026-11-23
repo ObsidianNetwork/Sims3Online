@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>SimsOnline.TestClient</AssemblyName>
+    <RootNamespace>SimsOnline.TestClient</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\SimsOnline.Client\PublicWireConnection.cs" Link="PublicWireConnection.cs" />
+    <ProjectReference Include="..\DedicatedServer\SimsOnline.DedicatedServer.csproj" />
+    <!-- card 57 ruling 4: the public protocol types live in SimsOnline.Protocol. -->
+    <ProjectReference Include="..\SimsOnline.Protocol\SimsOnline.Protocol.csproj" />
+  </ItemGroup>
+</Project>

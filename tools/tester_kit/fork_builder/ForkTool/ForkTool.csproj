@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The tester kit's fork builder helper: extracts the game's script assemblies from the friend's own
+       Game\Bin packages, checks and patches the decompile, restores the metadata C# cannot express and packs the
+       rebuilt assembly. It runs on the .NET runtime the kit carries (fork-builder\runtime), so it stays
+       framework-dependent and has no package references: System.Reflection.Metadata is part of the runtime. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RollForward>Major</RollForward>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+</Project>

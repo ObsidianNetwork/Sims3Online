@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+<title id="title">SimsOnline small icon</title>
+<desc id="desc">Simplified two-player prism and synchronization orbit optimized for small sizes.</desc>
+<defs>
+  <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#17152D"/><stop offset=".5" stop-color="#0A1830"/><stop offset="1" stop-color="#062128"/></linearGradient>
+  <linearGradient id="c" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#9CFFF6"/><stop offset=".5" stop-color="#2EDBE3"/><stop offset="1" stop-color="#0787C9"/></linearGradient>
+  <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#E7FF88"/><stop offset=".5" stop-color="#7AF16D"/><stop offset="1" stop-color="#16B589"/></linearGradient>
+  <linearGradient id="o" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#2ADCE3"/><stop offset=".5" stop-color="#56E8C2"/><stop offset="1" stop-color="#A8FA63"/></linearGradient>
+</defs>
+<rect x="52" y="52" width="920" height="920" rx="220" fill="url(#bg)"/>
+<rect x="70" y="70" width="884" height="884" rx="205" fill="none" stroke="#FFFFFF" stroke-opacity=".16" stroke-width="24"/>
+<path d="M225 634 C235 370 444 202 666 238 C850 268 894 456 794 605 C674 773 424 816 268 700" fill="none" stroke="url(#o)" stroke-width="44" stroke-linecap="round"/>
+<path fill="url(#c)" fill-rule="evenodd" d="M445 220 L278 512 L445 804 L590 512 Z M445 360 L359 512 L445 664 L514 512 Z"/>
+<path fill="url(#g)" fill-rule="evenodd" d="M579 220 L434 512 L579 804 L746 512 Z M579 360 L510 512 L579 664 L665 512 Z"/>
+<path d="M512 448 L576 512 L512 576 L448 512 Z" fill="#FFFFFF"/>
+<circle cx="512" cy="512" r="28" fill="url(#o)"/>
+<circle cx="512" cy="512" r="12" fill="#FFFFFF"/>
+</svg>

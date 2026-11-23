@@ -1,0 +1,28 @@
+{
+  "format_version": 1,
+  "flags": 4,
+  "lot_id": 4250,
+  "world_seed": 61680,
+  "rooms": [
+    {"room_id": 0, "level": 0, "portal_first": 0, "portal_len": 1, "cell_first": 0, "cell_len": 1},
+    {"room_id": 1, "level": 0, "portal_first": 0, "portal_len": 1, "cell_first": 1, "cell_len": 1}
+  ],
+  "cells": [
+    {"cell_id": 0, "room_id": 0, "vertex_first": 0, "vertex_len": 4, "portal_first": 0, "portal_len": 1, "centroid_cm": [0, 0, 0], "flags": 0},
+    {"cell_id": 1, "room_id": 1, "vertex_first": 4, "vertex_len": 4, "portal_first": 0, "portal_len": 1, "centroid_cm": [100, 0, 0], "flags": 0}
+  ],
+  "portals": [
+    {"portal_id": 0, "cell_a": 0, "cell_b": 1, "path_type": 2147483648, "door_id": 7, "jamb_a_cm": [50, -20], "jamb_b_cm": [50, 20], "portal_y_cm": 0, "width_cm": 40, "lock_key": 5}
+  ],
+  "obstacle_templates": [],
+  "vertices": [
+    [-50, 0, -50],
+    [-50, 0, 50],
+    [50, 0, 50],
+    [50, 0, -50],
+    [50, 0, -50],
+    [50, 0, 50],
+    [150, 0, 50],
+    [150, 0, -50]
+  ]
+}

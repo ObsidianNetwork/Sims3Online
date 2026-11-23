@@ -1,0 +1,13 @@
+{
+  "name": "burnt-floor",
+  "summary": "The tile 2 m in front of Jennifer is burnt by the game's FireManager.BurnTile (scratch/BurnTileProbe.cs): the client draws the burn too (a lot-keyed Wl SetFloorFeatures line, seam-gaps row 5)",
+  "steps": [
+    "probe:server:scratch/BurnTileProbe.cs",
+    "sleep:3",
+    "capture:Jennifer:1"
+  ],
+  "after": [
+    "assert:client:SACS_REPLAY 00:world=installed:\\d,lines:\\d+,client:applied:\\d+/failed:\\d+/walking:\\d+/lots:[1-9]"
+  ],
+  "expect": "pass"
+}

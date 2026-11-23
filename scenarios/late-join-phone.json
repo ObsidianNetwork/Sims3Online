@@ -1,0 +1,22 @@
+{
+  "name": "late-join-phone",
+  "summary": "The client joins while Jennifer is browsing on her phone (server paused meanwhile)",
+  "steps": [
+    "act:Jennifer inv:PhoneSmart BrowseTheWeb --wait 40",
+    "sleep:3",
+    "rejoin:paused",
+    "sleep:5"
+  ],
+  "watch": {
+    "sims": [
+      "Jennifer"
+    ],
+    "seconds": 12,
+    "after": true
+  },
+  "after": [
+    "sims:Jennifer --machines --props",
+    "capture:Jennifer:2"
+  ],
+  "expect": "known-failing: the late-join history carries the server's finished phone driver (unreleased, alive, in NormalExit): a warm joiner replays it and its idle restarts twice; a cold joiner shows no phone machine while the server still holds one (2026-10-21) Ticket: ."
+}

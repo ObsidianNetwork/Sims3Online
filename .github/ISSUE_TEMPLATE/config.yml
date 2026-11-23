@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/ObsidianNetwork/SimsOnline/security/advisories/new
+    about: Report vulnerabilities privately, not in a public issue.
+  - name: Questions and ideas
+    url: https://github.com/ObsidianNetwork/SimsOnline/discussions
+    about: Ask questions, propose ideas, or discuss modding research.
+  - name: Documentation
+    url: https://github.com/ObsidianNetwork/SimsOnline/tree/main/docs
+    about: Project status, architecture decisions, engine notes and developer tooling.
