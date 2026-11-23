@@ -452,6 +452,32 @@ class LineConnectionTests(unittest.TestCase):
             self.assertEqual(result.exception.code, 2)
             connect.assert_not_called()
 
+    def test_front_door_default_and_explicit_wire_override(self):
+        import os
+        import sys
+        for mode, explicit, expected in [("0", [], "json"), ("1", [], "line"),
+                                         ("1", ["--wire", "json"], "json"),
+                                         ("0", ["--wire", "line"], "line")]:
+            with self.subTest(mode=mode, explicit=explicit), \
+                 patch.dict(os.environ, {"SIMSONLINE_FRONT_DOOR": mode}), \
+                 patch.object(sys, "argv", ["simctl", *explicit, "--player", "9998", "speed", "normal"]), \
+                 patch.object(simctl, "Conn") as connect, patch.object(simctl, "cmd_speed"):
+                simctl.main()
+                self.assertEqual(connect.call_args.kwargs["wire"], expected)
+                self.assertEqual(connect.call_args.kwargs["player_id"], 9998)
+
+    def test_front_door_default_still_requires_explicit_public_player(self):
+        import os
+        import sys
+        import io
+        with patch.dict(os.environ, {"SIMSONLINE_FRONT_DOOR": "1"}), \
+             patch.object(sys, "argv", ["simctl", "status"]), \
+             patch.object(sys, "stderr", io.StringIO()), patch.object(simctl, "Conn") as connect:
+            with self.assertRaises(SystemExit) as result:
+                simctl.main()
+            self.assertEqual(result.exception.code, 2)
+            connect.assert_not_called()
+
     def test_completed_bulk_queued_behind_another_still_counts_against_budget(self):
         receiver = simctl.LineReceiver(max_bulk_bytes=3)
         receiver.receive("EV|1|0|0|SimAnimation|b1")

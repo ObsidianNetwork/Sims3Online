@@ -123,7 +123,7 @@ impl Peer {
         assert_eq!(self.exchange(&format!("CMD|{corr}|AckSnapshot|{corr}|{player}|1")),
             format!("ACK|{corr}|AckSnapshot"));
         self.0.pending.drain(..).inspect(|line| {
-            assert!(line.starts_with("EV|"), "unexpected line {line}");
+            assert!(line.starts_with("EV|") || line.starts_with("BULK|"), "unexpected line {line}");
         }).collect()
     }
 }
@@ -151,7 +151,7 @@ fn real_sockets_with_claims_prove_admin_and_other_player_non_leak() {
     let mut leaks = 0usize;
     for (index, (kind, fields, requester, expected)) in [
         ("DialogRequested", vec!["7", "55", "5374696e67", "[]"], None, vec![1]),
-        ("SimDescriptionData", vec!["9", "[]", "[]", "[]"], Some(connections.lock().unwrap()[&20]), vec![2]),
+        ("SimDescriptionData", vec!["9", "", "", ""], Some(connections.lock().unwrap()[&20]), vec![2]),
         ("SimAnimation", vec!["[6f7061717565]"], None, vec![1, 2]),
     ].into_iter().enumerate() {
         events.lock().unwrap().push(RoutedEvent {
@@ -164,6 +164,11 @@ fn real_sockets_with_claims_prove_admin_and_other_player_non_leak() {
         let recipients: Vec<_> = delivered.iter().enumerate().filter_map(|(i, events)| (!events.is_empty()).then_some(i + 1)).collect();
         leaks += recipients.iter().filter(|id| !expected.contains(id)).count();
         assert_eq!(recipients, expected);
+        if kind == "SimDescriptionData" {
+            assert_eq!(delivered[1].len(), 4, "one introducer then three empty raw byte bulks");
+            assert!(delivered[1][0].contains("|SimDescriptionData|9|b"));
+            for line in &delivered[1][1..] { assert!(line.starts_with("BULK|") && line.ends_with("|0|1|")); }
+        }
         rows.push(serde_json::json!({"kind":kind,"recipients":recipients,"socket_lines":delivered}).to_string());
     }
     rows.push(serde_json::json!({"leak_events":leaks}).to_string());

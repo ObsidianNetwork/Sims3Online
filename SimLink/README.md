@@ -1,6 +1,6 @@
 # SimLink
 
-SimLink is an optional native sidecar used by SimsOnline for local communication between a game
+SimLink is an optional native sidecar used by Sims3Online for local communication between a game
 process and its controller. It is an experimental component, not a standalone application or
 player-facing feature.
 

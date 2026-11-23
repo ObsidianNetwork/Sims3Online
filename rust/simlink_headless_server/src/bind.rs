@@ -216,7 +216,7 @@ pub fn unrecognized_args(args: &[String]) -> Vec<String> {
         }
         if ["--pid", "--connections", "--scorecard-dir", "--admin", "--resync-warn-ticks",
             "--resync-hard-ticks", "--resync-max-interval-seconds", "--sync-broadcast-seconds", "--card58-scorecard-dir",
-            "--card59-scorecard-dir", "--save", "--checkpoint-save"].contains(&arg.as_str()) {
+            "--card59-scorecard-dir", "--save", "--checkpoint-save", "--sync-policy", "--check-sync-policy"].contains(&arg.as_str()) {
             iter.next();
             continue;
         }

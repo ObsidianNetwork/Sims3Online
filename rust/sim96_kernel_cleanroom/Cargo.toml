@@ -25,6 +25,11 @@ private-oracles = []
 # Local-only navigation vectors are excluded from clean-room checkouts.
 private-fixtures = []
 
+# Overhaul-track navigation planner (internal documentation): point and
+# slot goals, a node/time budget and a reachability gate. Off by default; no
+# sealed code path uses it.
+nav-planner = []
+
 [[test]]
 name = "private_navigation"
 path = "tests/private_navigation.rs"

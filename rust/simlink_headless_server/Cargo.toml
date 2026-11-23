@@ -49,6 +49,8 @@ ctrlc = "3"
 mio = { version = "1", features = ["net", "os-poll"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+rhai = { version = "=1.27.0", features = ["sync", "no_module"] }
+sha2 = "0.10"
 
 # Card 57 §A: #![forbid(unsafe_code)] in every file and this lint; the program's only unsafe stays
 # in simlink_bridge/src/ffi.rs. Card 57 §H gate 1: clippy all = "deny".

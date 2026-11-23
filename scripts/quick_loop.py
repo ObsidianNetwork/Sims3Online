@@ -203,6 +203,22 @@ class _MirrorProcFallback:
     def describe_report(*args, **kwargs):
         return ""
 
+    @staticmethod
+    def load_state(*args, **kwargs):
+        return {}
+
+    @staticmethod
+    def save_state(*args, **kwargs):
+        return None
+
+    @staticmethod
+    def side_game(*args, **kwargs):
+        return None
+
+    @staticmethod
+    def detach_trace(*args, **kwargs):
+        return False, "excluded in public mirror"
+
 
 import argparse
 import calendar
@@ -316,7 +332,9 @@ def simctl_speed(speed: str) -> str:
     sent at its join (a bridge SET_GAME_SPEED moves the server's game only). Its last line; "simctl: no answer" when
     its process does not end in 60 s."""
     try:
-        text = run([sys.executable, "scripts/simctl.py", "--timeout", str(SIMCTL_TIMEOUT), "speed", speed], timeout=60).strip()
+        console = ["--wire", "line", "--player", "9998"] if os.environ.get("SIMSONLINE_FRONT_DOOR") == "1" else []
+        text = run([sys.executable, "scripts/simctl.py", "--timeout", str(SIMCTL_TIMEOUT),
+                    *console, "speed", speed], timeout=60).strip()
     except subprocess.TimeoutExpired:
         return "simctl: no answer"
     return text.splitlines()[-1][:100] if text else "no output"

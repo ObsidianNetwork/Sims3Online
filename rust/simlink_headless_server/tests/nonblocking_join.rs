@@ -286,10 +286,17 @@ struct DeferredRecorder {
 impl DeferredRecorder {
     fn answer(&mut self, request: StreamRequest) -> StreamReply {
         match request {
+            StreamRequest::ExportSimDescription(_) => panic!("participant capability is disabled in this fixture"),
             StreamRequest::Snapshot(_) => StreamReply::Snapshot(Some(snapshot(77))),
             StreamRequest::DiagState => StreamReply::DiagState(None),
+            StreamRequest::ProbeSimState(_) => StreamReply::SimState("-".into()),
             StreamRequest::Recorder(args) => StreamReply::Recorder(match args[0].as_str() {
-                "snapshot" => format!("drivers={}", args[1]),
+                "snapshot" => {
+                    // This fixture has no BoundaryState driver: after selection,
+                    // handle-addressed history pages do not depend on LastTargets.
+                    self.locked = false;
+                    format!("drivers={}", args[1])
+                }
                 "snapshot-driver" => {
                     let handle: u64 = args[1].parse().unwrap();
                     let offset: usize = args[2].parse().unwrap();
@@ -331,7 +338,7 @@ impl GameDriver for DeferredRecorder {
     }
     fn poll_stream_request(&mut self) -> Result<Option<StreamReply>, DriverError> {
         let Some((request, remaining)) = &mut self.pending else { return Ok(None); };
-        if self.stall_history && matches!(request, StreamRequest::Recorder(args) if args[0] == "snapshot") {
+        if self.stall_history && matches!(request, StreamRequest::Recorder(args) if args[0] == "snapshot-driver") {
             return Ok(None);
         }
         *remaining -= 1;
@@ -561,9 +568,10 @@ fn i5_history_then_held_keeps_duplicates_fresh_partition_and_one_recorder_gather
     assert_eq!(second.iter().filter(|line| *line == "0|H|66|0").count(), 1);
     assert_eq!(first.iter().filter(|line| line.starts_with("0|L|") || *line == "0|H|55|0")
         .cloned().collect::<Vec<_>>(), driver.produced, "an established player was held or lost a live line");
-    let mut held = vec!["0|H|66|0".to_owned()];
-    held.extend(driver.produced.clone());
-    assert_eq!(&second[16..], held, "history was not followed by the complete held window");
+    // Fresh target 66's independent history can finish among unrelated live
+    // records; the joiner's known-target history still precedes its held stream.
+    let held: Vec<_> = second[16..].iter().filter(|line| *line != "0|H|66|0").cloned().collect();
+    assert_eq!(held, driver.produced, "the joiner's complete held stream changed order");
     assert_eq!(stream.history_trimmed[&ConnId(2)], 1);
     assert_eq!(stream.history_trimmed[&ConnId(1)], 0);
     let selects: Vec<_> = driver.requests.iter().filter(|args| args[0] == "snapshot").map(|args| args[1].as_str()).collect();
@@ -571,7 +579,7 @@ fn i5_history_then_held_keeps_duplicates_fresh_partition_and_one_recorder_gather
 }
 
 #[test]
-fn i5_gather_abandons_at_thirty_seconds_and_delivers_held_lines_alone() {
+fn i5_gather_abandons_at_thirty_seconds_releases_held_and_retries_baseline() {
     let (mut server, mut stream, mut driver, mut now) = bootstrapped();
     add(&mut server, &mut stream, 2);
     driver.emit = true;
@@ -588,7 +596,17 @@ fn i5_gather_abandons_at_thirty_seconds_and_delivers_held_lines_alone() {
     assert!(stream.report.iter().any(|line| line.contains("join_history_abandoned")));
     assert!(!second.is_empty(), "held lines were discarded on abandonment");
     assert!(second.iter().all(|line| line.starts_with("0|L|")), "partial history escaped on abandonment");
-    assert!(!stream.joining());
+    assert!(stream.joining(), "held-only fallback must remain visibly incomplete");
+    assert_eq!(stream.history_failures, 1);
+    driver.stall_history = false;
+    for _ in 0..500 {
+        second.extend(lines(&stream.pump(now, &mut server, &mut driver).unwrap(), 2));
+        now += 10;
+        if !stream.history_pending() { break; }
+    }
+    assert!(!stream.history_pending(), "a recovered bridge must finish the retried baseline");
+    assert!(second.iter().any(|line| line.starts_with("0|H|55|")));
+    assert_eq!(stream.history_failures, 1, "recovery cannot erase failure evidence");
 }
 
 #[test]

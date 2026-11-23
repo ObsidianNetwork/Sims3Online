@@ -43,6 +43,8 @@ SAMPLES = {  # (module.TEMPLATE, placeholder) -> C#, where the context names no 
     ("ts3_view.FOCUS_TEMPLATE", "AT"): "found.Position",
     ("ts3_view.FOCUS_TEMPLATE", "FOCUSED"): "found.FullName.Replace(' ', '_')",
     ("ts3_view.CAMERA_TEMPLATE", "NAMES"): '"Jennifer", "Pablo"',
+    ("route_points.TEMPLATE", "SIM"): '"Jennifer"',
+    ("route_points.TEMPLATE", "POINTS"): "new Vector3(0f, 0f, 0f)",
 }
 
 

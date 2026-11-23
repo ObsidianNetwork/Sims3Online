@@ -110,6 +110,22 @@ class _MirrorProcFallback:
     def describe_report(*args, **kwargs):
         return ""
 
+    @staticmethod
+    def load_state(*args, **kwargs):
+        return {}
+
+    @staticmethod
+    def save_state(*args, **kwargs):
+        return None
+
+    @staticmethod
+    def side_game(*args, **kwargs):
+        return None
+
+    @staticmethod
+    def detach_trace(*args, **kwargs):
+        return False, "excluded in public mirror"
+
 """stackctl -- SimsOnline dev stack lifecycle (consolidated CLI).
 
 It replaced the earlier PowerShell dev-session scripts. `python scripts/stackctl.py --test` runs its self-tests.

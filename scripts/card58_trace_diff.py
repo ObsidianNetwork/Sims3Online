@@ -230,16 +230,20 @@ def pump_fixture_rows():
         report(["snapshot", str(sim)], f"drivers={sim}"),
         report(["snapshot-driver", str(sim), "0"], f"lines=1;next=-1\n0|history|{sim}"),
     ]
+    # The live lines are play requests on the fresh Sim's own driver: the one kind of live line both servers must
+    # deliver after that Sim's history. (The Rust server asks for the live lines while the history is still being
+    # read and lets lines that are not the fresh Sim's driver through ahead of it, so an untyped live line is not
+    # ordered the same way by the two.)
     return [
         {"op": "join", "connection": 1, "player": 10}, {"op": "admin", "connection": 4},
         {"op": "pump", "now": 0, "recorder": [report(["ring-on"], "enabled=1"),
          report(["dump", cursor], "seq=10;more=0"), report(["dump", cursor], "seq=11;more=0")]},
         {"op": "claim", "player": 10, "sim": 55},
-        {"op": "pump", "now": 250, "recorder": [*history(55), report(["dump", "11", "55"], "seq=12;more=0\n0|live|55")]},
+        {"op": "pump", "now": 250, "recorder": [*history(55), report(["dump", "11", "55"], "seq=12;more=0\n0|P|55|live")]},
         {"op": "join", "connection": 2, "player": 20},
         {"op": "claim", "player": 10, "sim": 66},
         {"op": "pump", "now": 500, "recorder": [*history(66), *history(55),
-         report(["dump", "12", "55,66"], "seq=13;more=0\n0|live|66")]},
+         report(["dump", "12", "55,66"], "seq=13;more=0\n0|P|66|live")]},
         {"op": "release", "player": 10, "sim": 55}, {"op": "release", "player": 10, "sim": 66},
         {"op": "pump", "now": 750, "recorder": [report(["dump", cursor], "seq=20;more=0")]},
         {"op": "join", "connection": 3, "player": 30},

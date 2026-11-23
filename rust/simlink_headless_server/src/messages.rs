@@ -18,6 +18,7 @@ pub const PUBLIC_LINE_MAX_BYTES: usize = 4_194_304;
 /// chunk's base64 (`4 * ceil(3_145_632 / 3) = 4_194_176`) leaves 128 bytes for the `BULK`
 /// header under [`PUBLIC_LINE_MAX_BYTES`].
 pub const PUBLIC_BULK_CHUNK_RAW_BYTES: usize = 3_145_632;
+pub const PUBLIC_DESCRIPTION_MAX_RAW_BYTES: usize = 512 * 1024;
 
 // ---- literal witnesses: each public cap against the card's own number (F1) ----------
 // Mirroring `rust/simlink_bridge/src/layout.rs:76`, these pin the two §C.1.2 / §F.2 numbers so
@@ -70,9 +71,13 @@ pub fn is_legal_field(field: &str) -> bool {
 
 /// The lowercase hex of a string's UTF-8 bytes (§C.1.3). The empty string is the empty field.
 #[must_use]
-pub fn hex_encode(text: &str) -> String {
-    let mut out = String::with_capacity(text.len() * 2);
-    for byte in text.as_bytes() {
+pub fn hex_encode(text: &str) -> String { hex_encode_bytes(text.as_bytes()) }
+
+/// Public byte-array scalar: raw bytes as lowercase hexadecimal, without UTF-8 conversion.
+#[must_use]
+pub fn hex_encode_bytes(bytes: &[u8]) -> String {
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
         out.push(HEX_DIGITS[usize::from(byte >> 4)]);
         out.push(HEX_DIGITS[usize::from(byte & 0x0f)]);
     }
@@ -82,6 +87,11 @@ pub fn hex_encode(text: &str) -> String {
 /// Decode a lowercase-hex scalar back to its UTF-8 text (§C.1.3). An odd length, a non-hex
 /// byte, or bytes that are not valid UTF-8 are a [`WireError`].
 pub fn hex_decode(field: &str) -> Result<String, WireError> {
+    String::from_utf8(hex_decode_bytes(field)?).map_err(|_| WireError::NotUtf8)
+}
+
+/// Decode public lowercase hexadecimal to raw bytes. Invalid UTF-8 remains valid byte-array data.
+pub fn hex_decode_bytes(field: &str) -> Result<Vec<u8>, WireError> {
     let bytes = field.as_bytes();
     if !bytes.len().is_multiple_of(2) {
         return Err(WireError::BadHex);
@@ -94,7 +104,7 @@ pub fn hex_decode(field: &str) -> Result<String, WireError> {
         out.push((hi << 4) | lo);
         i += 2;
     }
-    String::from_utf8(out).map_err(|_| WireError::NotUtf8)
+    Ok(out)
 }
 
 fn hex_nibble(byte: u8) -> Result<u8, WireError> {

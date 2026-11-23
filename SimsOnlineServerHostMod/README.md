@@ -1,7 +1,7 @@
-# SimsOnline game mod
+# Sims3Online game mod
 
-This project contains the Sims 3 script mod used by SimsOnline's host and player game processes.
-It connects the game to the corresponding SimsOnline controller and supports the project’s
+This project contains the Sims 3 script mod used by Sims3Online's host and player game processes.
+It connects the game to the corresponding Sims3Online controller and supports the project’s
 server-authoritative multiplayer model.
 
 The mod is experimental and requires a compatible, legally acquired installation of The Sims 3.

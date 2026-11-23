@@ -1,6 +1,6 @@
 # `simlink_bridge`
 
-This experimental Rust crate implements a Windows process-memory bridge for SimsOnline.
+This experimental Rust crate implements a Windows process-memory bridge for Sims3Online.
 It is not a supported player release component.
 
 For the public system overview, see the [architecture](../../docs/architecture.md),

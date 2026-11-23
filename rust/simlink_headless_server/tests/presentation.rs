@@ -59,6 +59,23 @@ fn pushed_recorder_sequences_are_deduplicated_before_the_page_watermark_advances
 }
 
 #[test]
+fn a_kept_back_line_below_the_cursor_is_delivered_once_and_a_resent_line_is_still_dropped() {
+    let mut ladder = Ladder::new(true);
+    let mut cursor = 32;
+    ladder.delivered(&["31|T|1".to_string(), "32|T|1".to_string()]);
+    assert_eq!(ladder.pushed_page(0, "seq=38;more=0\n36|T|1\n38|T|1", &mut cursor), ["36|T|1", "38|T|1"]);
+    // 33 and 35 belong to an object that only now matters to a target: the recorder sends them late, in their old order.
+    let late = "seq=40;more=0\n32|T|1\n33|Ob|9|SetPosition:v|1~2~3\n35|An|9|x\n36|T|1\n40|T|9";
+    assert_eq!(ladder.pushed_page(1, late, &mut cursor), ["33|Ob|9|SetPosition:v|1~2~3", "35|An|9|x", "40|T|9"]);
+    assert_eq!(cursor, 40);
+    assert_eq!(ladder.late_lines, 2);
+    assert_eq!(ladder.rearm_dedup_dropped, 2);
+    assert!(ladder.pushed_page(2, late, &mut cursor).is_empty());
+    assert_eq!(ladder.late_lines, 2);
+    assert!(ladder.status().contains(";late_lines=2"));
+}
+
+#[test]
 fn pushed_introductions_follow_their_real_event_and_never_become_watermarks() {
     let mut ladder = Ladder::new(true);
     let mut cursor = 30;
@@ -102,13 +119,18 @@ struct RingSource {
     dumps: VecDeque<String>,
     calls: Vec<Vec<String>>,
     admin_requests: Vec<admin::Request>,
+    cursor: i64,
 }
 impl GameDriver for RingSource {
     fn adjudicate(&mut self, _: &Command) -> Result<Vec<u8>, DriverError> { unreachable!() }
     fn poll_event_lines(&mut self) -> Result<Vec<Vec<u8>>, DriverError> { Ok(Vec::new()) }
     fn claimed_sims(&self) -> Vec<u64> { vec![55] }
     fn ring_available(&self) -> bool { true }
-    fn presentation_pages(&mut self) -> Result<Vec<String>, DriverError> { Ok(std::mem::take(&mut self.pages)) }
+    fn presentation_pages(&mut self) -> Result<Vec<String>, DriverError> {
+        let pages=std::mem::take(&mut self.pages);
+        for page in &pages {self.cursor=self.cursor.max(parse_dump(page).0);}
+        Ok(pages)
+    }
     fn admin_request(&mut self, request: &admin::Request) -> Result<String, DriverError> {
         self.admin_requests.push(request.clone());
         Ok(admin::report("push=on;cursor=10;sequence=12;pages=3;lines=8;sentByKind=A:2,S:6"))
@@ -116,9 +138,11 @@ impl GameDriver for RingSource {
     fn recorder(&mut self, args: &[String]) -> Result<String, DriverError> {
         self.calls.push(args.to_vec());
         Ok(match args[0].as_str() {
-            "dump" => self.dumps.pop_front().expect("unexpected dump"),
-            "push-on" => "push=on".into(),
-            "snapshot" => "drivers=".into(),
+            "ring-on" => "recorder=on;ring=on".into(),
+            "dump" => {let report=self.dumps.pop_front().expect("unexpected dump");self.cursor=self.cursor.max(parse_dump(&report).0);report},
+            "push-off" => format!("push=off,cursor={},sequence={},behind=0",self.cursor,self.cursor),
+            "push-on" | "push-targets" | "push-status" => format!("push=on,cursor={},sequence={},behind=0",self.cursor,self.cursor),
+            "snapshot" => "drivers=-".into(),
             _ => String::new(),
         })
     }

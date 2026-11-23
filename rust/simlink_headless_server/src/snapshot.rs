@@ -63,6 +63,32 @@ impl Reader<'_> {
     }
 }
 impl Snapshot {
+    /// A native delta contains complete entity records, not field patches. Fold
+    /// it into a complete model without changing the delta sent to other peers.
+    pub(crate) fn with_later_delta(&self, delta: &Self) -> Option<Self> {
+        if delta.tick < self.tick || self.world_name != delta.world_name || self.save_name != delta.save_name { return None; }
+        fn replace<T: Clone>(base: &[T], changes: &[T], id: impl Fn(&T) -> u64) -> Option<Vec<T>> {
+            let mut seen = std::collections::HashSet::new();
+            let mut slots = std::collections::HashMap::new();
+            let mut merged = base.to_vec();
+            for (index, record) in merged.iter().enumerate() {
+                let key = id(record);
+                if key == 0 || !seen.insert(key) { return None; }
+                slots.insert(key, index);
+            }
+            seen.clear();
+            for record in changes {
+                let key = id(record);
+                if key == 0 || !seen.insert(key) { return None; }
+                if let Some(index) = slots.get(&key) { merged[*index] = record.clone(); }
+                else { merged.push(record.clone()); }
+            }
+            Some(merged)
+        }
+        Some(Self { tick: delta.tick, speed: delta.speed.clone(),
+            sims: replace(&self.sims, &delta.sims, |sim| sim.object_id)?,
+            objects: replace(&self.objects, &delta.objects, |object| object.object_id)?, ..self.clone() })
+    }
     pub fn from_bridge(snapshot: simlink_bridge::reply::Snapshot) -> Self {
         Self { tick: snapshot.tick, world_name: snapshot.world, save_name: snapshot.save, speed: snapshot.speed.name().into(),
             sims: snapshot.sims.into_iter().map(|s| Sim { object_id: s.object_id, name: s.name, household_id: s.household,
@@ -133,5 +159,24 @@ impl Sim {
 impl Object {
     fn wire(&self) -> String {
         enc_record(&[self.object_id.to_string(), hex_encode(&self.script_class), position(self.position), optional(self.lot_id)])
+    }
+}
+#[cfg(test)]
+mod model_merge_tests {
+    use super::*;
+    #[test]
+    fn merge_replaces_complete_records_preserves_order_and_refuses_ambiguous_cuts() {
+        let object=|id,position|Object {object_id:id,script_class:"Fixture".into(),position:[position,0.0,0.0],lot_id:None};
+        let full=Snapshot {tick:10,world_name:"World".into(),save_name:"Save".into(),speed:"Normal".into(),sims:vec![],objects:vec![object(1,1.0),object(2,2.0)]};
+        let delta=Snapshot {tick:11,objects:vec![object(2,3.0),object(3,4.0)],..full.clone()};
+        let merged=full.with_later_delta(&delta).unwrap();
+        assert_eq!(merged.tick,11);assert_eq!(merged.objects,vec![object(1,1.0),object(2,3.0),object(3,4.0)]);
+        assert_eq!(delta.objects,vec![object(2,3.0),object(3,4.0)],"nonforced delta remains exact");
+        for edit in 0..5 {
+            let mut invalid=delta.clone();
+            match edit {0=>invalid.tick=9,1=>invalid.world_name="Other".into(),2=>invalid.save_name="Other".into(),
+                3=>invalid.objects.push(object(2,5.0)),_=>invalid.objects.push(object(0,5.0))}
+            assert!(full.with_later_delta(&invalid).is_none());
+        }
     }
 }

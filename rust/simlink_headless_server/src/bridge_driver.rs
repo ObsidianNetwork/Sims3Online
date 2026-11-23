@@ -34,6 +34,11 @@ pub const PUBLIC_VERBS: [(&str, char); 18] = [
 
 /// The typed bridge seam allows authority tests without opening any process.
 pub trait BridgeEndpoint {
+    fn set_ring(&mut self, _ring: Box<dyn crate::ring_pages::PageSource>) {}
+    fn ring_available(&self) -> bool { false }
+    fn ring_pages(&mut self) -> Result<Vec<String>, DriverError> { Ok(Vec::new()) }
+    fn ring_discard(&mut self) -> Result<usize, DriverError> { Ok(0) }
+    fn ring_report(&self) -> String { "ring_available=0".into() }
     fn begin_stream_command(&mut self, command: &BridgeCommand) -> Result<Option<Vec<String>>, DriverError> {
         self.command(command).map(Some)
     }
@@ -44,7 +49,13 @@ pub trait BridgeEndpoint {
         self.command(command).map(Some)
     }
     fn poll_checkpoint_command(&mut self) -> Result<Option<Vec<String>>, DriverError> { Ok(None) }
+    /// Non-blocking parity probe slot: test endpoints may answer synchronously.
+    fn begin_parity_command(&mut self, command: &BridgeCommand) -> Result<Option<Vec<String>>, DriverError> {
+        self.command(command).map(Some)
+    }
+    fn poll_parity_command(&mut self) -> Result<Option<Vec<String>>, DriverError> { Ok(None) }
     fn connected(&self) -> bool { true }
+    fn participant_lifecycle_enabled(&self) -> bool { false }
     fn dropped_replies(&self) -> u64 { 0 }
     fn command(&mut self, command: &BridgeCommand) -> Result<Vec<String>, DriverError>;
     fn events(&mut self) -> Result<Vec<Vec<u8>>, DriverError>;
@@ -76,6 +87,12 @@ struct CheckpointReply {
     result: Option<Result<String, DriverError>>,
 }
 
+struct ParityReply {
+    corr: Guid,
+    deadline: Instant,
+    result: Option<Result<Vec<String>, DriverError>>,
+}
+
 struct PendingStreamReply {
     corr: Guid,
     deadline: Instant,
@@ -83,6 +100,8 @@ struct PendingStreamReply {
     snapshot: Option<Vec<u8>>,
     parts: Option<(usize, Vec<Option<Vec<u8>>>)>,
     chunks: Option<Vec<Option<String>>>,
+    description_id: Option<u64>,
+    description: Option<simlink_bridge::verbs::SimDescriptionPayload>,
 }
 
 pub struct LiveBridge<M: simlink_bridge::memory::GuestMemory = ProcessAttach, P: simlink_bridge::driver::Pacer = SleepPacer> {
@@ -93,12 +112,28 @@ pub struct LiveBridge<M: simlink_bridge::memory::GuestMemory = ProcessAttach, P:
     reply_drops: u64,
     checkpoint_reply: Option<CheckpointReply>,
     stream_reply: Option<PendingStreamReply>,
+    parity_reply: Option<ParityReply>,
+    ring: Option<Box<dyn crate::ring_pages::PageSource>>,
 }
 
 impl<M: simlink_bridge::memory::GuestMemory, P: simlink_bridge::driver::Pacer> LiveBridge<M, P> {
     pub fn from_driver(driver: BridgeDriver<M, P>) -> Self {
         Self { driver, pushed: VecDeque::new(), snapshot: None, description: None, reply_drops: 0,
-            checkpoint_reply: None, stream_reply: None }
+            checkpoint_reply: None, stream_reply: None, parity_reply: None, ring: None }
+    }
+    fn command_corr(command: &BridgeCommand, label: &str) -> Result<Guid, DriverError> {
+        let encoded = simlink_bridge::verbs::encode(command).map_err(driver_error)?;
+        encoded.split('|').nth(1).and_then(|id| Guid::parse(id).ok())
+            .ok_or_else(|| driver_error(format!("{label} correlation missing")))
+    }
+    fn drain_bridge_replies(&mut self) -> Option<DriverError> {
+        loop {
+            match self.poll_reply() {
+                Ok(Some(line)) => self.unsolicited(line),
+                Ok(None) => break None,
+                Err(error) => break Some(error),
+            }
+        }
     }
     fn drop_reply(&mut self, line: &str, reason: &str) {
         self.reply_drops += 1;
@@ -136,6 +171,12 @@ impl<M: simlink_bridge::memory::GuestMemory, P: simlink_bridge::driver::Pacer> L
                 return;
             }
         }
+        if let Some(pending) = &mut self.parity_reply {
+            if line.split('|').nth(1).and_then(|id| Guid::parse(id).ok()) == Some(pending.corr) {
+                pending.result = Some(Ok(vec![line]));
+                return;
+            }
+        }
         if line.starts_with("EVENT|") { self.pushed.push_back(line.into_bytes()); }
         else { self.drop_reply(&line, "unmatched"); }
     }
@@ -152,6 +193,11 @@ impl<M: simlink_bridge::memory::GuestMemory, P: simlink_bridge::driver::Pacer> L
                         pending.result = Some(Err(driver_error(&error)));
                     }
                 }
+                if let Some(pending) = &mut self.parity_reply {
+                    if Guid::parse_wire(id) == Some(pending.corr) && pending.result.is_none() {
+                        pending.result = Some(Err(driver_error(&error)));
+                    }
+                }
             }
             driver_error(error)
         })
@@ -160,6 +206,16 @@ impl<M: simlink_bridge::memory::GuestMemory, P: simlink_bridge::driver::Pacer> L
         let mut pending = self.stream_reply.take().expect("matched stream correlation");
         let outcome = (|| -> Result<Option<Vec<String>>, DriverError> {
             let fields: Vec<_> = line.split('|').collect();
+            if let Some(desc) = pending.description_id {
+                if fields.first() == Some(&"ERROR") { return Ok(Some(vec![line.clone()])); }
+                if fields.len() != 4 || fields[0] != "AUTONOMY_PROBE" || fields[2] != "ok" {
+                    return Err(driver_error("description export response malformed"));
+                }
+                let report = String::from_utf8(simlink_bridge::text::decode_hex_bytes(fields[3]).map_err(driver_error)?)
+                    .map_err(driver_error)?;
+                pending.description = Some(self.description_payload(pending.corr, desc, &report)?);
+                return Ok(Some(vec![line.clone()]));
+            }
             if fields[0] == "BULK_REF" {
                 let slot: usize = fields.get(3).ok_or_else(|| driver_error("bad bulk slot"))?
                     .parse().map_err(driver_error)?;
@@ -219,33 +275,61 @@ impl<M: simlink_bridge::memory::GuestMemory, P: simlink_bridge::driver::Pacer> L
         }
         self.stream_reply = Some(pending);
     }
+    /// Shared synchronous/asynchronous native description bulk boundary. All
+    /// metadata is validated before touching a slot; ownership/length/CRC are
+    /// then verified by the existing bridge reader, never inferred from report.
+    fn description_payload(&mut self, corr: Guid, desc: u64, report: &str)
+        -> Result<simlink_bridge::verbs::SimDescriptionPayload, DriverError> {
+        let field = |key: &str| -> Result<&str, DriverError> {
+            let mut values = report.split(';').filter_map(|part| part.trim().split_once('='))
+                .filter(|(name, _)| *name == key).map(|(_, value)| value);
+            let value = values.next().ok_or_else(|| driver_error(format!("description metadata missing {key}")))?;
+            if values.next().is_some() { return Err(driver_error(format!("description metadata duplicates {key}"))); }
+            Ok(value)
+        };
+        if desc == 0 || field("result")? != "exported" { return Err(driver_error("description export unavailable")); }
+        let length: usize = field("bytes")?.parse().map_err(driver_error)?;
+        let slot: usize = field("slot")?.parse().map_err(driver_error)?;
+        let props: usize = field("props")?.parse().map_err(driver_error)?;
+        let keys: usize = field("keys")?.parse().map_err(driver_error)?;
+        let objects: usize = field("objects")?.parse().map_err(driver_error)?;
+        let crc = field("crc")?;
+        if length == 0 || length > crate::participants::MAX_DESCRIPTION_BYTES
+            || length > simlink_bridge::layout::BULK_SLOT_PAYLOAD_MAX
+            || slot >= simlink_bridge::layout::BULK_SLOT_COUNT || crc.len() != 8
+            || props.checked_add(keys).and_then(|sum| sum.checked_add(objects)) != Some(length) {
+            return Err(driver_error("description metadata bounds/segments invalid"));
+        }
+        let crc = u32::from_str_radix(crc, 16).map_err(driver_error)?;
+        let bytes = self.driver.read_bulk_for(corr, slot, length, crc).map_err(driver_error)?;
+        Ok(simlink_bridge::verbs::SimDescriptionPayload { desc, property_stream: bytes[..props].to_vec(),
+            res_key_table: bytes[props..props + keys].to_vec(), object_id_table: bytes[props + keys..].to_vec() })
+    }
 }
 impl<M: simlink_bridge::memory::GuestMemory, P: simlink_bridge::driver::Pacer> BridgeEndpoint for LiveBridge<M, P> {
+    fn participant_lifecycle_enabled(&self) -> bool { true }
     fn begin_stream_command(&mut self, command: &BridgeCommand) -> Result<Option<Vec<String>>, DriverError> {
         if self.stream_reply.is_some() { return Err(driver_error("stream command already pending")); }
-        let encoded = simlink_bridge::verbs::encode(command).map_err(driver_error)?;
-        let corr = encoded.split('|').nth(1).and_then(|id| Guid::parse(id).ok())
-            .ok_or_else(|| driver_error("stream correlation missing"))?;
+        let corr = Self::command_corr(command, "stream")?;
+        let description_id = if let BridgeCommand::ExportSimDescription { desc, .. } = command {
+            self.description = None;
+            Some(*desc)
+        } else { None };
         self.driver.send_command(command).map_err(driver_error)?;
         self.stream_reply = Some(PendingStreamReply { corr, deadline: Instant::now() + Duration::from_secs(30),
-            result: None, snapshot: None, parts: None, chunks: None });
+            result: None, snapshot: None, parts: None, chunks: None, description_id, description: None });
         Ok(None)
     }
     fn poll_stream_command(&mut self) -> Result<Option<Vec<String>>, DriverError> {
         // A zero-duration pacing step lets deterministic memory fixtures service
         // their producer; the live pacer never waits for a bridge round trip.
         simlink_bridge::driver::Pacer::pause(self.driver.pacer_mut(), 0);
-        let failure = loop {
-            match self.poll_reply() {
-                Ok(Some(line)) => self.unsolicited(line),
-                Ok(None) => break None,
-                Err(error) => break Some(error),
-            }
-        };
+        let failure = self.drain_bridge_replies();
         if let Some(pending) = &mut self.stream_reply {
             if let Some(result) = pending.result.take() {
                 let pending = self.stream_reply.take().expect("completed stream request");
                 if let Some(snapshot) = pending.snapshot { self.snapshot = Some(snapshot); }
+                if let Some(description) = pending.description { self.description = Some(description); }
                 return result.map(Some);
             }
             if Instant::now() >= pending.deadline {
@@ -261,21 +345,13 @@ impl<M: simlink_bridge::memory::GuestMemory, P: simlink_bridge::driver::Pacer> B
     }
     fn begin_checkpoint_command(&mut self, command: &BridgeCommand, timeout: Duration) -> Result<Option<Vec<String>>, DriverError> {
         if self.checkpoint_reply.is_some() { return Err(driver_error("checkpoint command already pending")); }
-        let encoded = simlink_bridge::verbs::encode(command).map_err(driver_error)?;
-        let corr = encoded.split('|').nth(1).and_then(|id| Guid::parse(id).ok())
-            .ok_or_else(|| driver_error("checkpoint correlation missing"))?;
+        let corr = Self::command_corr(command, "checkpoint")?;
         self.driver.send_command(command).map_err(driver_error)?;
         self.checkpoint_reply = Some(CheckpointReply { corr, deadline: Instant::now() + timeout, result: None });
         Ok(None)
     }
     fn poll_checkpoint_command(&mut self) -> Result<Option<Vec<String>>, DriverError> {
-        let mut failure = loop {
-            match self.poll_reply() {
-                Ok(Some(line)) => self.unsolicited(line),
-                Ok(None) => break None,
-                Err(error) => break Some(error),
-            }
-        };
+        let mut failure = self.drain_bridge_replies();
         if let Some(pending) = &mut self.checkpoint_reply {
             if let Some(result) = pending.result.take() {
                 self.checkpoint_reply = None;
@@ -290,6 +366,48 @@ impl<M: simlink_bridge::memory::GuestMemory, P: simlink_bridge::driver::Pacer> B
         if let Some(error) = failure { return Err(error); }
         Ok(None)
     }
+    fn begin_parity_command(&mut self, command: &BridgeCommand) -> Result<Option<Vec<String>>, DriverError> {
+        if self.parity_reply.is_some() { return Err(driver_error("parity command already pending")); }
+        let corr = Self::command_corr(command, "parity")?;
+        self.driver.send_command(command).map_err(driver_error)?;
+        self.parity_reply = Some(ParityReply { corr, deadline: Instant::now() + Duration::from_secs(30), result: None });
+        Ok(None)
+    }
+    fn poll_parity_command(&mut self) -> Result<Option<Vec<String>>, DriverError> {
+        simlink_bridge::driver::Pacer::pause(self.driver.pacer_mut(), 0);
+        let mut failure = self.drain_bridge_replies();
+        if let Some(pending) = &mut self.parity_reply {
+            if let Some(result) = pending.result.take() {
+                self.parity_reply = None;
+                return result.map(Some);
+            }
+            if let Some(error) = failure.take() {
+                self.parity_reply = None;
+                return Err(error);
+            }
+            if Instant::now() >= pending.deadline {
+                self.parity_reply = None;
+                return Err(driver_error("parity bridge reply timeout"));
+            }
+        }
+        if let Some(error) = failure { return Err(error); }
+        Ok(None)
+    }
+    fn set_ring(&mut self, ring: Box<dyn crate::ring_pages::PageSource>) { self.ring=Some(ring); }
+    fn ring_available(&self)->bool { self.ring.as_ref().is_some_and(|ring|ring.available()) }
+    fn ring_pages(&mut self)->Result<Vec<String>,DriverError> {
+        let Some(ring)=&mut self.ring else { return Ok(Vec::new()); };
+        let pages=ring.take_pages();
+        if let Some(error)=ring.failure() { return Err(driver_error(error)); }
+        Ok(pages)
+    }
+    fn ring_discard(&mut self)->Result<usize,DriverError> {
+        let Some(ring)=&mut self.ring else { return Ok(0); };
+        let count=ring.discard_pages();
+        if let Some(error)=ring.failure() { return Err(driver_error(error)); }
+        Ok(count)
+    }
+    fn ring_report(&self)->String { self.ring.as_ref().map_or_else(||"ring_available=0".into(),|r|format!("ring_available={}|{}",u8::from(r.available()),r.report())) }
     fn dropped_replies(&self) -> u64 { self.reply_drops }
     fn command(&mut self, command: &BridgeCommand) -> Result<Vec<String>, DriverError> {
         self.command_with_timeout(command, Duration::from_secs(30))
@@ -298,6 +416,7 @@ impl<M: simlink_bridge::memory::GuestMemory, P: simlink_bridge::driver::Pacer> B
         let encoded = simlink_bridge::verbs::encode(command).map_err(driver_error)?;
         let corr = encoded.split('|').nth(1).ok_or_else(|| DriverError("missing bridge corr".into()))?;
         let corr_id = Guid::parse(corr).map_err(driver_error)?;
+        if matches!(command, BridgeCommand::ExportSimDescription { .. }) { self.description = None; }
         self.driver.send_command(command).map_err(driver_error)?;
         let deadline = Instant::now() + timeout;
         let mut bulk_parts: Option<(usize, Vec<Option<Vec<u8>>>)> = None;
@@ -348,27 +467,9 @@ impl<M: simlink_bridge::memory::GuestMemory, P: simlink_bridge::driver::Pacer> B
                     }
                     if let BridgeCommand::ExportSimDescription { desc, .. } = command {
                         if let Some(hex) = fields.get(3) {
-                            let report = simlink_bridge::text::decode_text(hex).map_err(driver_error)?;
-                            if report.contains("result=exported") {
-                                let get = |key: &str| -> Result<&str, DriverError> {
-                                    report.split(';').find_map(|s| s.trim().strip_prefix(key))
-                                        .ok_or_else(|| driver_error(format!("description metadata missing {key}")))
-                                };
-                                let length: usize = get("bytes=")?.parse().map_err(driver_error)?;
-                                let slot = get("slot=")?.parse().map_err(driver_error)?;
-                                let crc = u32::from_str_radix(get("crc=")?, 16).map_err(driver_error)?;
-                                let bytes = self.driver.read_bulk_for(Guid::parse_wire(corr).ok_or_else(|| driver_error("bad correlation"))?, slot, length, crc).map_err(driver_error)?;
-                                let props: usize = get("props=")?.parse().map_err(driver_error)?;
-                                let keys: usize = get("keys=")?.parse().map_err(driver_error)?;
-                                let objects: usize = get("objects=")?.parse().map_err(driver_error)?;
-                                if props.checked_add(keys).and_then(|n| n.checked_add(objects)) != Some(bytes.len()) {
-                                    return Err(driver_error("description segment sizes don't match"));
-                                }
-                                self.description = Some(simlink_bridge::verbs::SimDescriptionPayload {
-                                    desc: *desc, property_stream: bytes[..props].to_vec(),
-                                    res_key_table: bytes[props..props + keys].to_vec(), object_id_table: bytes[props + keys..].to_vec(),
-                                });
-                            }
+                            let report = String::from_utf8(simlink_bridge::text::decode_hex_bytes(hex).map_err(driver_error)?)
+                                .map_err(driver_error)?;
+                            self.description = Some(self.description_payload(corr_id, *desc, &report)?);
                         }
                     }
                     if fields[0] == "SNAPSHOT_CHUNK" {
@@ -433,6 +534,8 @@ impl From<DriverError> for DispatchError {
 
 pub struct BridgeGameDriver<B = LiveBridge> {
     endpoint: B,
+    // Configuration ownership survives an unavailable source/fallback, not just mapped pages.
+    _ring_lease: Option<crate::ring_pages::NativeReaderLease>,
     world: AuthorityWorld,
     ids: IdMap,
     players: HashMap<i32, PlayerId>,
@@ -446,8 +549,12 @@ pub struct BridgeGameDriver<B = LiveBridge> {
     observed_tick: u64,
     event_drops: std::collections::BTreeMap<String, u64>,
     sim_lots: HashMap<u64, Option<u64>>,
+    sim_households: HashMap<u64, u64>,
     registered_gates: std::collections::HashSet<u64>,
     pub claimed_this_run: BTreeSet<u64>,
+    presentation_world_generation: u64,
+    state_authority_generation: u64,
+    presentation_world_pending: bool,
     save_name: String,
     checkpoint_save_name: Option<String>,
     save_roots: Option<Vec<std::path::PathBuf>>,
@@ -460,7 +567,10 @@ pub struct BridgeGameDriver<B = LiveBridge> {
     checkpoint_job: Option<CheckpointJob>,
     world_transfers: Vec<WorldTransfer>,
     private_record: Option<(u64, usize, Vec<u8>)>,
+    private_high_id: u64,
     stream_request: Option<StreamRequest>,
+    claimed_parity: crate::claimed_parity::ClaimedParity,
+    parity_in_flight: Option<crate::claimed_parity::ParityJob>,
     join_queue: VecDeque<PendingJoinBaseline>,
     join_request_active: bool,
     join_events: Vec<crate::routing::RoutedEvent>,
@@ -526,14 +636,40 @@ impl BridgeGameDriver<LiveBridge> {
     }
     /// Only an explicit live CLI mode calls this; offline construction never opens handles.
     pub fn attach_pid(pid: u32) -> Result<Self, DriverError> {
+        let ring_requested=std::env::var("SIMSONLINE_SIMLINK_SERVER_RING").as_deref()==Ok("1");
+        let reader_lease=if ring_requested {Some(crate::ring_pages::NativeReaderLease::acquire(pid).map_err(driver_error)?)}else{None};
         let (driver, _) = BridgeDriver::attach_pid(pid, Duration::from_secs(30)).map_err(driver_error)?;
         let mut driver = Self::from_attached(driver);
         driver.enable_rust_switches()?;
+        driver._ring_lease=reader_lease;
+        if driver._ring_lease.is_some() {
+            // Refuse a competing Rust owner before touching the bridge; absence can use dumps.
+            let box_name=std::env::var("SIMSONLINE_SIMLINK_SANDBOXIE_BOX").ok().filter(|v|!v.is_empty());
+            let mirror=std::env::var("SIMSONLINE_SIMLINK_SHADOW").as_deref()==Ok("1");
+            let pages=crate::ring_pages::start(simlink_bridge::ring::open_native(pid,box_name.as_deref()),
+                crate::ring_pages::REGISTRATION_TIMEOUT,mirror,||driver.recorder(&["sidecar-on".into()]).map_err(|e|e.0));
+            match pages {
+                Ok(pages) if pages.reader().telemetry().native_version==17 => {
+                    driver.endpoint.set_ring(Box::new(pages));
+                    eprintln!("serve_report|ring_attached|pid={pid}|native_version=17");
+                }
+                Ok(_) => eprintln!("serve_report|ring_unavailable|reason=native_version_not_17"),
+                Err(error) => eprintln!("serve_report|ring_unavailable|reason={error}"),
+            }
+        }
         Ok(driver)
     }
 }
 
 impl<B: BridgeEndpoint> BridgeGameDriver<B> {
+    /// Injectable section for offline native-handshake tests. The live constructor
+    /// additionally requires native17 and holds cooperative PID-reader admission.
+    pub fn start_ring<S:simlink_bridge::ring::Section+'static>(&mut self,
+        opened:Result<simlink_bridge::ring::RingReader<S>,simlink_bridge::ring::RingError>,
+        timeout:Duration,mirror:bool)->Result<(),String> {
+        let pages=crate::ring_pages::start(opened,timeout,mirror,||self.recorder(&["sidecar-on".into()]).map_err(|e|e.0))?;
+        self.endpoint.set_ring(Box::new(pages));Ok(())
+    }
     pub fn new(endpoint: B) -> Self {
         use std::hash::{BuildHasher, Hasher};
         let mut nonce = std::collections::hash_map::RandomState::new().build_hasher();
@@ -544,15 +680,19 @@ impl<B: BridgeEndpoint> BridgeGameDriver<B> {
         Self {
             // LiveNavigation forbids zero; 1 is the reserved server primary.
             // Claims and navigation share this one existing IdMap bijection.
-            endpoint, world, ids: IdMap::starting_at(2),
+            endpoint, _ring_lease:None, world, ids: IdMap::starting_at(2),
             players: HashMap::new(), kernel_corr: 0, bridge_corr: 0,
             bridge_nonce,
             request_connection: None, pending_events: Vec::new(), pick_requesters: VecDeque::new(),
             observed_tick: 0,
             event_drops: std::collections::BTreeMap::new(),
             sim_lots: HashMap::new(),
+            sim_households: HashMap::new(),
             registered_gates: std::collections::HashSet::new(),
             claimed_this_run: BTreeSet::new(),
+            presentation_world_generation: 0,
+            state_authority_generation: 0,
+            presentation_world_pending: false,
             save_name: crate::checkpoint::DEFAULT_SAVE_NAME.into(),
             checkpoint_save_name: std::env::var("SIMSONLINE_CHECKPOINT_SAVE").ok(),
             save_roots: None,
@@ -565,7 +705,10 @@ impl<B: BridgeEndpoint> BridgeGameDriver<B> {
             checkpoint_job: None,
             world_transfers: Vec::new(),
             private_record: None,
+            private_high_id: 0,
             stream_request: None,
+            claimed_parity: Default::default(),
+            parity_in_flight: None,
             join_queue: VecDeque::new(),
             join_request_active: false,
             join_events: Vec::new(),
@@ -605,9 +748,18 @@ impl<B: BridgeEndpoint> BridgeGameDriver<B> {
     /// fence only resets on a higher `Invalidate` epoch, so the next sync carries a bumped one
     /// (Card 55 contract 3.1, Forced).
     fn nav_detached(&mut self) {
+        self.private_high_id = 0;
         self.nav_synced = false;
         self.nav_epoch_bump = true;
         if self.nav_sync { self.nav_epoch_pending = None; }
+    }
+
+    fn restore_private_sessions(&mut self) {
+        for (&public, &conn_id) in &self.player_conns {
+            if let Some(&player) = self.players.get(&public) {
+                self.world.private_navigation.actor_join(conn_id, player);
+            }
+        }
     }
 
     /// Every driver-initiated attachment close invalidates the sync at this boundary.
@@ -619,6 +771,8 @@ impl<B: BridgeEndpoint> BridgeGameDriver<B> {
     /// Sessions or claims changed: push the table now. A failed push stays dirty and retries on
     /// the next pump instead of failing the command that already succeeded.
     fn nav_changed(&mut self) {
+        self.state_authority_generation = self.state_authority_generation.checked_add(1)
+            .expect("state authority generation exhausted");
         self.nav_dirty = true;
         if let Err(error) = self.sync_navigation() {
             eprintln!("serve_report|navigation_sync_failed|{error}");
@@ -663,19 +817,21 @@ impl<B: BridgeEndpoint> BridgeGameDriver<B> {
             let corr = self.next_bridge_id()?;
             let args = crate::nav_sync::command_args(self.nav_epoch, index, pages.len(), page);
             let replies = self.endpoint.command(&BridgeCommand::SacsRecorder { corr, args })?;
-            let prefix = format!("AUTONOMY_PROBE|{}|ok|",corr.to_n());
-            let reported = replies.iter().filter_map(|reply| reply.strip_prefix(&prefix))
-                .filter_map(|hex| simlink_bridge::text::decode_text(hex).ok())
-                .find_map(|body| {
-                    let (_,active) = body.rsplit_once(";active=")?;
-                    let active = active.parse::<usize>().ok()?;
-                    (body == crate::nav_sync::accepted_body(self.nav_epoch,index,pages.len(),page,active))
-                        .then_some(active)
-                }).ok_or_else(|| driver_error("private bridge delivery refused"))?;
-            let active = if index + 1 == pages.len() { entries.len() }
-                else { *committed.get_or_insert(reported) };
-            let accepted = crate::nav_sync::accepted_body(self.nav_epoch, index, pages.len(), page, active);
-            Self::private_reply_ok(&replies, "AUTONOMY_PROBE", corr, Some(&accepted))?;
+            let active = (index + 1 == pages.len()).then_some(entries.len()).or(committed);
+            if let Some(active) = active {
+                let accepted = crate::nav_sync::accepted_body(self.nav_epoch, index, pages.len(), page, active);
+                Self::private_reply_ok(&replies, "AUTONOMY_PROBE", corr, Some(&accepted))?;
+            } else {
+                let prefix = format!("AUTONOMY_PROBE|{}|ok|", corr.to_n());
+                let reported = replies.iter().filter_map(|reply| reply.strip_prefix(&prefix))
+                    .find_map(|hex| {
+                        let body = simlink_bridge::text::decode_text(hex).ok()?;
+                        let active = body.rsplit_once(";active=")?.1.parse::<usize>().ok()?;
+                        let accepted = crate::nav_sync::accepted_body(self.nav_epoch, index, pages.len(), page, active);
+                        (hex == m::hex_encode(&accepted).to_ascii_uppercase()).then_some(active)
+                    }).ok_or_else(|| driver_error("private bridge delivery refused"))?;
+                committed = Some(reported);
+            }
         }
         self.nav_synced = true;
         self.nav_dirty = false;
@@ -737,11 +893,33 @@ impl<B: BridgeEndpoint> BridgeGameDriver<B> {
     /// public command, admin loader or second AuthorityWorld.
     fn private_navigation_frame(&mut self, frame: NavigationFrame) -> Result<(), DriverError> {
         if !self.endpoint.connected() { return Err(driver_error("private attachment disconnected")); }
+        let frame_epoch = if let NavigationMessage::Invalidate { epoch, .. } = frame.message {
+            (epoch >= 1).then_some(epoch)
+        } else { None };
+        if self.world.private_navigation.enabled && self.private_high_id >= 1 && frame.id == 1 {
+            if let Some(epoch) = frame_epoch {
+                self.close_private_navigation(false);
+                self.flush_private_navigation()?;
+                if self.nav_sync {
+                    self.sync_navigation()?;
+                    if epoch < self.nav_epoch {
+                        return Ok(());
+                    }
+                }
+            }
+        }
         if !self.world.private_navigation.enabled {
-            if !matches!(frame.message,NavigationMessage::Invalidate { epoch:1.., .. }) {
+            let Some(epoch) = frame_epoch else {
                 return Err(driver_error("private attachment requires epoch fence"));
+            };
+            if self.nav_sync && !self.nav_synced {
+                self.sync_navigation()?;
+                if epoch < self.nav_epoch {
+                    return Ok(());
+                }
             }
             self.world.enable_private_navigation();
+            self.restore_private_sessions();
         }
         if let NavigationMessage::Install { bindings, .. } = &frame.message {
             for (actor,_) in &bindings.actors {
@@ -753,9 +931,14 @@ impl<B: BridgeEndpoint> BridgeGameDriver<B> {
             }
         }
         self.world.clock.native_tick_cnt = self.observed_tick;
+        let dispatched_id = frame.id;
         self.world.private_frame(frame);
-        // The kernel can also close internally on a failed delivery queue.
-        if !self.world.private_navigation.enabled { self.nav_detached(); }
+        if !self.world.private_navigation.enabled {
+            self.nav_detached();
+            self.private_deliveries.clear();
+            return Err(driver_error("private attachment failed internally"));
+        }
+        self.private_high_id = self.private_high_id.max(dispatched_id);
         self.flush_private_navigation()
     }
 
@@ -1430,11 +1613,19 @@ impl<B: BridgeEndpoint> BridgeGameDriver<B> {
 impl<B: BridgeEndpoint> GameDriver for BridgeGameDriver<B> {
     fn start_stream_request(&mut self, request: &StreamRequest) -> Result<Option<StreamReply>, DriverError> {
         if self.stream_request.is_some() { return Err(driver_error("stream request already pending")); }
+        if let StreamRequest::ProbeSimState(ids) = request {
+            let unique: BTreeSet<_> = ids.iter().copied().collect();
+            if ids.is_empty() || ids.len() > crate::visible_state::PROBE_BATCH || unique.len() != ids.len() || unique.contains(&0) {
+                return Err(driver_error("visible state probe requires one to eight unique nonzero Sim IDs"));
+            }
+        }
         let corr = self.next_bridge_id()?;
         let command = match request {
             StreamRequest::Snapshot(since) => BridgeCommand::RequestSnapshot { corr, since_tick: (*since >= 0).then_some(*since) },
             StreamRequest::Recorder(args) => BridgeCommand::SacsRecorder { corr, args: args.clone() },
             StreamRequest::DiagState => BridgeCommand::DiagState { corr },
+            StreamRequest::ProbeSimState(sims) => BridgeCommand::ProbeSimState { corr, sims: sims.clone() },
+            StreamRequest::ExportSimDescription(desc) => BridgeCommand::ExportSimDescription { corr, desc: *desc },
         };
         match self.endpoint.begin_stream_command(&command)? {
             Some(replies) => self.decode_stream_reply(request, &replies).map(Some),
@@ -1451,6 +1642,7 @@ impl<B: BridgeEndpoint> GameDriver for BridgeGameDriver<B> {
         self.decode_stream_reply(&request, &replies).map(Some)
     }
     fn stream_request_pending(&self) -> bool { self.stream_request.is_some() }
+    fn participant_lifecycle_enabled(&self) -> bool { self.endpoint.participant_lifecycle_enabled() }
     fn baseline_pending(&self, conn: crate::ConnId) -> bool {
         self.failed_baselines.contains(&conn) || self.join_queue.iter().any(|job| job.conn == conn && !job.closed)
     }
@@ -1557,6 +1749,12 @@ impl<B: BridgeEndpoint> GameDriver for BridgeGameDriver<B> {
         if request.name == "RUST_ROUTE_PLANS" {
             return Ok(self.route_plans_reply(&request.args));
         }
+        if request.name=="LOAD_SAVE" && self.presentation_world_pending {
+            return Err(driver_error("LOAD_SAVE refused while presentation world cut is pending"));
+        }
+        let next_world_generation=if request.name=="LOAD_SAVE" {
+            Some(self.presentation_world_generation.checked_add(1).ok_or_else(||driver_error("presentation world generation exhausted"))?)
+        } else {None};
         let mut loaded_name = None;
         if request.name == "LOAD_SAVE" {
             self.private_record = None;
@@ -1581,6 +1779,13 @@ impl<B: BridgeEndpoint> GameDriver for BridgeGameDriver<B> {
             corr, name: request.name.clone(), args: request.args.clone(),
         }, Duration::from_secs(request.timeout_seconds))?;
         if !replies.iter().any(|reply| reply.starts_with("ERROR|")) {
+            if let Some(next)=next_world_generation {
+                self.presentation_world_generation=next;
+                self.presentation_world_pending=true;
+                self.sim_lots.clear();
+                self.sim_households.clear();
+                self.pending_events.push(crate::routing::world_reset(next));
+            }
             if let Some(name) = loaded_name {
                 self.save_name = name;
                 self.route_plans.clear();
@@ -1625,6 +1830,15 @@ impl<B: BridgeEndpoint> GameDriver for BridgeGameDriver<B> {
         let replies = self.endpoint.command(&BridgeCommand::DiagState { corr })?;
         self.decode_diag(&replies)
     }
+    fn presentation_pages(&mut self)->Result<Vec<String>,DriverError>{self.endpoint.ring_pages()}
+    fn discard_pages(&mut self)->Result<usize,DriverError>{self.endpoint.ring_discard()}
+    fn ring_available(&self)->bool{self.endpoint.ring_available()}
+    fn ring_report(&self)->String{self.endpoint.ring_report()}
+    fn presentation_world_generation(&self) -> u64 { self.presentation_world_generation }
+    fn state_authority_generation(&self) -> u64 { self.state_authority_generation }
+    fn presentation_world_cut_complete(&mut self, generation:u64) {
+        if generation==self.presentation_world_generation {self.presentation_world_pending=false;}
+    }
     fn claimed_sims(&self) -> Vec<u64> {
         let mut sims: Vec<_> = self.world.authority.owners.keys().filter_map(|sim| self.ids.kernel_to_wire(*sim)).collect();
         sims.sort();
@@ -1651,18 +1865,78 @@ impl<B: BridgeEndpoint> GameDriver for BridgeGameDriver<B> {
         self.release_player_claims(public, 0, None);
         self.nav_changed();
     }
+    fn poll_claimed_parity(&mut self, now_ms: u64, interval_ms: f64, paused: bool) -> Result<Vec<crate::routing::RoutedEvent>, DriverError> {
+        let mut out = Vec::new();
+        if let Some(job) = self.parity_in_flight.take() {
+            match self.endpoint.poll_parity_command() {
+                Ok(None) => {
+                    self.parity_in_flight = Some(job);
+                    return Ok(out);
+                }
+                Ok(Some(replies)) => {
+                    self.observe_claimed_parity();
+                    out = self.apply_parity_replies(&job, &replies);
+                }
+                Err(error) => {
+                    if error.0.contains("process_exited") {
+                        return Err(error);
+                    }
+                    eprintln!("serve_report|claimed_parity_probe_failed|{error}");
+                    return Ok(out);
+                }
+            }
+        }
+        self.observe_claimed_parity();
+        if paused || !self.endpoint.connected() || self.stream_request_pending()
+            || self.join_request_active || !self.join_queue.is_empty() {
+            return Ok(out);
+        }
+        self.claimed_parity.step_cadence(now_ms, interval_ms);
+        let Some(job) = self.claimed_parity.next_job() else {
+            return Ok(out);
+        };
+        let command = self.parity_bridge_command(&job)?;
+        match self.endpoint.begin_parity_command(&command) {
+            Ok(None) => self.parity_in_flight = Some(job),
+            Ok(Some(replies)) => out.extend(self.apply_parity_replies(&job, &replies)),
+            Err(error) => {
+                if error.0.contains("process_exited") {
+                    return Err(error);
+                }
+                eprintln!("serve_report|claimed_parity_probe_failed|{error}");
+            }
+        }
+        Ok(out)
+    }
 }
 
 impl<B: BridgeEndpoint> BridgeGameDriver<B> {
     fn decode_stream_reply(&mut self, request: &StreamRequest, replies: &[String]) -> Result<StreamReply, DriverError> {
         match request {
             StreamRequest::Snapshot(_) => self.decode_snapshot(replies).map(StreamReply::Snapshot),
+            StreamRequest::ExportSimDescription(desc) => {
+                if replies.iter().any(|line| line.starts_with("ERROR|")) {
+                    return Err(driver_error("participant description export refused"));
+                }
+                let payload = self.endpoint.take_description().filter(|payload| payload.desc == *desc)
+                    .ok_or_else(|| driver_error("participant description export missing/mismatched payload"))?;
+                Ok(StreamReply::Description(payload))
+            }
             StreamRequest::Recorder(_) => {
                 let Some(reply) = replies.last() else { return Ok(StreamReply::Recorder(String::new())); };
                 let hex = reply.split('|').nth(3).ok_or_else(|| driver_error(format!("recorder reply malformed: {reply}")))?;
                 simlink_bridge::text::decode_text(hex).map(StreamReply::Recorder).map_err(driver_error)
             }
             StreamRequest::DiagState => self.decode_diag(replies).map(StreamReply::DiagState),
+            StreamRequest::ProbeSimState(_) => {
+                let reply = replies.last().ok_or_else(|| driver_error("visible state reply missing"))?;
+                let fields: Vec<_> = reply.split('|').collect();
+                if fields.len() != 4 || fields[0] != "AUTONOMY_PROBE" || fields[2] != "ok" {
+                    return Err(driver_error("visible state reply refused or malformed"));
+                }
+                let bytes = simlink_bridge::text::decode_hex_bytes(fields[3]).map_err(driver_error)?;
+                String::from_utf8(bytes).map(StreamReply::SimState).map_err(driver_error)
+            }
         }
     }
     fn advance_join_baselines(&mut self, eager: bool) -> Result<(), DriverError> {
@@ -1764,6 +2038,7 @@ impl<B: BridgeEndpoint> BridgeGameDriver<B> {
             self.observed_tick = snapshot.tick.max(0) as u64;
             for sim in &mut snapshot.sims {
                 self.sim_lots.insert(sim.object_id, sim.lot_id);
+                self.sim_households.insert(sim.object_id, sim.household_id);
                 sim.owning_player_id = self.owner(sim.object_id);
             }
         }
@@ -1790,7 +2065,8 @@ impl<B: BridgeEndpoint> BridgeGameDriver<B> {
                         }
                         Err(error) => eprintln!("serve_report|gate_autonomy_failed|sim={sim}|{error}"),
                     }
-                    if self.sim_lots.get(&sim).copied().flatten().is_none() {
+                    if self.sim_lots.get(&sim).copied().flatten().is_none()
+                        || !self.sim_households.contains_key(&sim) {
                         if let Err(error) = self.snapshot(-1) {
                             eprintln!("serve_report|claim_lot_snapshot_failed|sim={sim}|{error}");
                         }
@@ -1816,14 +2092,87 @@ impl<B: BridgeEndpoint> BridgeGameDriver<B> {
     fn capture_description(&mut self, cmd: &Command) -> Result<(), RefusalCode> {
         let Some(requester) = self.request_connection else { return Ok(()); };
         if let Some(description) = self.endpoint.take_description() {
-            let byte_list = |bytes: &[u8]| m::enc_list(&bytes.iter().map(u8::to_string).collect::<Vec<_>>());
             self.pending_events.push(crate::routing::RoutedEvent {
                 event: m::Event { seq: 0, tick: self.observed_tick, corr: cmd.corr, kind: "SimDescriptionData".into(),
-                    fields: vec![description.desc.to_string(), byte_list(&description.property_stream), byte_list(&description.res_key_table), byte_list(&description.object_id_table)] },
+                    fields: vec![description.desc.to_string(), m::hex_encode_bytes(&description.property_stream), m::hex_encode_bytes(&description.res_key_table), m::hex_encode_bytes(&description.object_id_table)] },
                 owner: None, requester: Some(requester),
             });
         }
         Ok(())
+    }
+    fn observe_claimed_parity(&mut self) {
+        let mut sims = Vec::new();
+        let mut owners = Vec::new();
+        let mut households = BTreeSet::new();
+        for (&kernel_sim, &player) in &self.world.authority.owners {
+            let Some(wire) = self.ids.kernel_to_wire(kernel_sim) else { continue; };
+            sims.push(wire);
+            owners.push((wire, player.0));
+            if let Some(&hh) = self.sim_households.get(&wire) {
+                if hh != 0 { households.insert(hh); }
+            }
+        }
+        sims.sort_unstable();
+        owners.sort_unstable();
+        let households: Vec<u64> = households.into_iter().collect();
+        self.claimed_parity.observe(
+            self.presentation_world_generation,
+            self.state_authority_generation,
+            &sims,
+            &owners,
+            &households,
+        );
+    }
+    fn parity_bridge_command(&mut self, job: &crate::claimed_parity::ParityJob) -> Result<BridgeCommand, DriverError> {
+        let corr = self.next_bridge_id()?;
+        Ok(match job {
+            crate::claimed_parity::ParityJob::SimState { sims, .. } =>
+                BridgeCommand::ProbeSimState { corr, sims: sims.clone() },
+            crate::claimed_parity::ParityJob::SimDetails { sims, .. } =>
+                BridgeCommand::ProbeSimDetails { corr, sims: sims.clone() },
+            crate::claimed_parity::ParityJob::HouseholdCash { household, .. } =>
+                BridgeCommand::ProbeHouseholdCash { corr, household: *household },
+        })
+    }
+    fn decode_parity_report(replies: &[String], expected_kind: &str) -> Result<Option<String>, DriverError> {
+        let Some(reply) = replies.last() else { return Ok(None); };
+        let fields: Vec<_> = reply.split('|').collect();
+        if fields[0] == "OK" { return Ok(None); }
+        if fields[0] == "ERROR" {
+            let detail = fields.get(2).and_then(|hex| simlink_bridge::text::decode_text(hex).ok())
+                .unwrap_or_else(|| reply.to_string());
+            return Err(driver_error(detail));
+        }
+        if fields.len() != 4 || fields[0] != expected_kind {
+            return Err(driver_error(format!("parity reply malformed: {reply}")));
+        }
+        let text = simlink_bridge::text::decode_text(fields[3]).map_err(driver_error)?;
+        if fields[2] != "ok" {
+            return Err(driver_error(format!("{expected_kind} {}:{text}", fields[2])));
+        }
+        Ok(Some(text))
+    }
+    fn apply_parity_replies(&mut self, job: &crate::claimed_parity::ParityJob, replies: &[String]) -> Vec<crate::routing::RoutedEvent> {
+        let expected_kind = match job {
+            crate::claimed_parity::ParityJob::SimState { .. }
+            | crate::claimed_parity::ParityJob::SimDetails { .. } => "AUTONOMY_PROBE",
+            crate::claimed_parity::ParityJob::HouseholdCash { .. } => "HOUSEHOLD_CASH_PROBE",
+        };
+        let report = match Self::decode_parity_report(replies, expected_kind) {
+            Ok(Some(report)) => report,
+            Ok(None) => return Vec::new(),
+            Err(error) => {
+                eprintln!("serve_report|claimed_parity_probe_failed|{error}");
+                return Vec::new();
+            }
+        };
+        match self.claimed_parity.accept(job, &report, self.observed_tick) {
+            Ok(events) => events,
+            Err(error) => {
+                eprintln!("serve_report|claimed_parity_probe_failed|{error}");
+                Vec::new()
+            }
+        }
     }
 }
 
@@ -1939,7 +2288,28 @@ mod tests {
                     format!("ERROR|{corr}|{}", simlink_bridge::text::encode_text("load refused")),
                 BridgeCommand::DiagState { .. } =>
                     format!("DIAG_STATE_REPORT|{corr}|ok|{}", simlink_bridge::text::encode_text(&format!("inWorld=True;tick={}", self.tick))),
+                BridgeCommand::SacsRecorder { args, .. } if args.first().map(String::as_str) == Some("rust-navigation-sync") => {
+                    let page = args.get(4).map_or("none", String::as_str);
+                    let entries = if page == "none" { 0 } else { page.split(',').count() };
+                    let body = format!(
+                        "rust-navigation-sync=accepted;epoch={};index={};count={};entries={entries};active={entries}",
+                        args[1], args[2], args[3]
+                    );
+                    format!("AUTONOMY_PROBE|{corr}|ok|{}", simlink_bridge::text::encode_text(&body))
+                }
+                BridgeCommand::SacsRecorder { args, .. } if args.first().map(String::as_str) == Some("rust-navigation-result") => {
+                    let raw = simlink_bridge::text::decode_hex_bytes(&args[1]).unwrap();
+                    let frame = NavigationFrame::decode(&raw).unwrap();
+                    let body = format!(
+                        "rust-navigation-result=accepted;operation={};request={};frame={}",
+                        frame.message.operation(), frame.id, args[1]
+                    );
+                    format!("AUTONOMY_PROBE|{corr}|ok|{}", simlink_bridge::text::encode_text(&body))
+                }
                 BridgeCommand::SacsRecorder { .. } => format!("AUTONOMY_PROBE|{corr}|ok|"),
+                BridgeCommand::ProbeSimState { sims, .. } => format!("AUTONOMY_PROBE|{corr}|ok|{}",
+                    simlink_bridge::text::encode_text(&sims.iter().map(|id|
+                        format!("{id}:1,2,3,4,5,6:18446744073709551615/18446744073709551615")).collect::<Vec<_>>().join(";")).to_uppercase()),
                 _ => format!("OK|{corr}"),
             }])
         }
@@ -1958,6 +2328,38 @@ mod tests {
             Ok(self.pending_snapshot.take().map(|corr|
                 vec![format!("SNAPSHOT|{}|77|57|53|Normal|0|0", corr.to_n())]))
         }
+    }
+
+    #[test]
+    fn visible_state_stream_uses_typed_native_probe_and_strict_case_insensitive_report() {
+        let mut driver = BridgeGameDriver::new(InstrumentBridge::default());
+        let request = StreamRequest::ProbeSimState(vec![u64::MAX]);
+        let Some(StreamReply::SimState(report)) = driver.start_stream_request(&request).unwrap() else { panic!("state reply"); };
+        assert!(matches!(driver.endpoint.commands.last(), Some(BridgeCommand::ProbeSimState { sims, .. }) if sims == &[u64::MAX]));
+        assert_eq!(crate::visible_state::parse(&report, &[u64::MAX]).unwrap()[0].id, u64::MAX);
+        let hex: String = simlink_bridge::text::encode_text(&report).chars().enumerate().map(|(i, c)| if i % 2 == 0 { c.to_ascii_uppercase() } else { c }).collect();
+        assert!(matches!(driver.decode_stream_reply(&request, &[format!("AUTONOMY_PROBE|id|ok|{hex}")]), Ok(StreamReply::SimState(value)) if value == report));
+        for reply in ["AUTONOMY_PROBE|id|ok|FF", "AUTONOMY_PROBE|id|ok|C328", "AUTONOMY_PROBE|id|ok|3", "ERROR|id|dead", "OTHER|id|ok|2D"] {
+            assert!(driver.decode_stream_reply(&request, &[reply.into()]).is_err(), "{reply}");
+        }
+        let before = driver.endpoint.commands.len();
+        for ids in [vec![], vec![0], vec![1, 1], (1..=9).collect()] {
+            assert!(driver.start_stream_request(&StreamRequest::ProbeSimState(ids)).is_err());
+        }
+        assert_eq!(driver.endpoint.commands.len(), before);
+    }
+
+    #[test]
+    fn accepted_claim_and_release_invalidate_state_reads_even_with_navigation_disabled() {
+        let mut driver = BridgeGameDriver::new(InstrumentBridge::default());
+        driver.configure_rust_switches(false, false, false);
+        let before = driver.state_authority_generation();
+        for (corr, verb) in [(1, "ClaimSim"), (2, "ReleaseSim")] {
+            let command = Command { corr, command_id: corr, player_id: 7, verb: verb.into(), args: vec!["20".into()] };
+            assert!(driver.adjudicate_for(crate::ConnId(1), &command).unwrap().starts_with(b"ACK|"));
+        }
+        assert!(driver.claimed_sims().is_empty());
+        assert_eq!(driver.state_authority_generation(), before + 2);
     }
 
     #[test]
@@ -2036,6 +2438,18 @@ mod tests {
             assert_eq!(driver.route_plans.is_empty(), !refused);
             assert_eq!(driver.world.road_set.is_none(), !refused);
             assert_eq!(driver.observed_tick, if refused { 500 } else { 0 });
+            assert_eq!(driver.presentation_world_generation(), if refused { 0 } else { 1 });
+            assert_eq!(driver.pending_events.iter().filter(|e| e.event.kind==crate::routing::WORLD_RESET).count(), usize::from(!refused));
+            if !refused {
+                let request=crate::admin::parse_request("LOAD_SAVE 46697874757265").unwrap();
+                let before=driver.endpoint.commands.len();
+                assert!(driver.admin_request(&request).unwrap_err().0.contains("world cut is pending"));
+                assert_eq!(driver.endpoint.commands.len(),before);
+                driver.presentation_world_cut_complete(0);
+                assert!(driver.presentation_world_pending,"stale completion cannot acknowledge a later cut");
+                driver.presentation_world_cut_complete(1);
+                assert!(!driver.presentation_world_pending);
+            }
             assert_eq!(driver.switches_sent, refused);
             driver.poll_routed_events().unwrap();
             driver.poll_routed_events().unwrap();
@@ -2194,5 +2608,48 @@ mod tests {
         assert_eq!(driver.world.client_roles.get(&player.0).map(String::as_str), Some("presenter"));
         driver.release_player(7);
         assert!(!driver.world.client_roles.contains_key(&player.0));
+    }
+
+    #[test]
+    fn kernel_initiated_private_close_during_private_frame_detaches_sync_and_resyncs() {
+        use sim96_kernel_cleanroom::private_navigation::MAX_OUTSTANDING;
+        let mut driver = BridgeGameDriver::new(InstrumentBridge::default());
+        driver.configure_rust_switches(true, false, true);
+        driver.poll_routed_events().unwrap();
+        assert!(driver.nav_synced);
+        assert_eq!(driver.nav_epoch, 1);
+
+        driver.private_navigation_frame(NavigationFrame {
+            id: 1, message: NavigationMessage::Invalidate { epoch: 1, generation: 0 },
+        }).unwrap();
+        let cap = MAX_OUTSTANDING * 2 + 2;
+        for step in 0..cap {
+            driver.world.private_frame(NavigationFrame {
+                id: 2 + step as u64,
+                message: NavigationMessage::Invalidate { epoch: 1, generation: 0 },
+            });
+        }
+        assert!(driver.world.private_navigation.enabled, "cap fits without failing");
+        let err = driver.private_navigation_frame(NavigationFrame {
+            id: 2 + cap as u64,
+            message: NavigationMessage::Invalidate { epoch: 1, generation: 0 },
+        }).unwrap_err();
+        assert_eq!(err.0, "private attachment failed internally");
+        assert!(!driver.world.private_navigation.enabled);
+        assert!(!driver.nav_synced);
+        assert!(driver.nav_epoch_bump);
+        assert_eq!(driver.private_high_id, 0);
+
+        // Next Invalidate re-syncs with a bumped epoch and drops stale pre-bump frames until epoch 2 arrives.
+        driver.private_navigation_frame(NavigationFrame {
+            id: 1, message: NavigationMessage::Invalidate { epoch: 1, generation: 0 },
+        }).unwrap();
+        assert!(!driver.world.private_navigation.enabled);
+        assert!(driver.nav_synced);
+        assert_eq!(driver.nav_epoch, 2);
+        driver.private_navigation_frame(NavigationFrame {
+            id: 1, message: NavigationMessage::Invalidate { epoch: 2, generation: 0 },
+        }).unwrap();
+        assert!(driver.world.private_navigation.enabled);
     }
 }

@@ -21,6 +21,7 @@ pub mod layout;
 pub mod live;
 pub mod memory;
 pub mod record;
+pub mod ring;
 pub mod reply;
 pub mod scorecard;
 pub mod text;

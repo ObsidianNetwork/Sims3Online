@@ -190,6 +190,22 @@ class _MirrorProcFallback:
     def describe_report(*args, **kwargs):
         return ""
 
+    @staticmethod
+    def load_state(*args, **kwargs):
+        return {}
+
+    @staticmethod
+    def save_state(*args, **kwargs):
+        return None
+
+    @staticmethod
+    def side_game(*args, **kwargs):
+        return None
+
+    @staticmethod
+    def detach_trace(*args, **kwargs):
+        return False, "excluded in public mirror"
+
 
 import argparse
 import calendar
@@ -336,10 +352,14 @@ def failure_client(failure: str) -> str | None:
 def client_verdicts(record: dict, clients: list[str]) -> dict[str, dict]:
     """A two-client scenario's verdict per client: that client's failures and the ones every client shares."""
     out = {}
+    blocked = record.get("verdict") == "BLOCKED"
     for client in clients:
         own = [f for f in record["failures"] if failure_client(f) in (None, client)]
         expect_pass = record["expect"] == "pass"
-        verdict = ("PASS" if not own else "FAIL") if expect_pass else ("FIXED?" if not own else "known-failing")
+        if blocked:
+            verdict = "BLOCKED"
+        else:
+            verdict = ("PASS" if not own else "FAIL") if expect_pass else ("FIXED?" if not own else "known-failing")
         out[client] = {"verdict": verdict, "failures": own}
     return out
 
@@ -1542,22 +1562,730 @@ def rejoined(step: str) -> list[str]:
 # falls to quick_step and its exit code is ignored, so the scenario would PASS by omission.
 RUST_ONLY_KINDS = ("claim-sim", "rust-env", "load-simnav", "navigate_astar", "rust-evidence")
 RUST_ONLY_EXECUTORS: frozenset[str] = frozenset()
+OFFLINE_STEP_KINDS = (
+    "set_sim_pose", "route_and_wait", "route_to_object",
+    "cancel_interaction", "teleport_sim", "switch_active_household", "reset_sim",
+)
+SIM_WIRE_IDS = {"jennifer": 18031287978496800304, "pablo": 18031287978496800272}
+DEFAULT_LIBRARY_LOT = 7787005354294925872
+SELECTOR_RE = re.compile(r"^simnav:([0-9a-f]{16}):(0|[1-9][0-9]*)$")
+
+
+def uses_rust_only(spec: dict) -> bool:
+    kinds = {item.partition(":")[0] for item in spec.get("steps", []) + spec.get("after", [])}
+    return bool(kinds & set(RUST_ONLY_KINDS))
+
+
+def is_card55_scenario(spec: dict) -> bool:
+    if uses_rust_only(spec) or bool(spec.get("_card55_scope")):
+        return True
+    for item in spec.get("after", []):
+        kind, _, rest = item.partition(":")
+        if kind == "sims" and any(flag in rest.split() for flag in ("--e5", "--settle-bracket", "--settled-mm", "--mm", "--landing")):
+            return True
+    return False
+
+
+_COORD_AT_RE = re.compile(
+    r"\b(?P<key>at|to|from|pos|posmm|goal|target|dest|spot)=\s*[\[(]?-?\d+(?:\.\d+)?(?:\s*,\s*-?\d+(?:\.\d+)?)+[\])]?"
+)
+_COORD_POS_RE = re.compile(
+    r"\b(?P<kind>pos|posmm|facing)\|[^|\r\n]+\|-?\d+(?:\.\d+)?(?:\s*,\s*-?\d+(?:\.\d+)?)+"
+)
+_COORD_VP_RT_RE = re.compile(r"\bVp\|rt\|[^\r\n]+")
+_COORD_TUPLE_RE = re.compile(
+    r"(?:\[\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?(?:\s*,\s*-?\d+(?:\.\d+)?)*\s*\]"
+    r"|\(\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?(?:\s*,\s*-?\d+(?:\.\d+)?)*\s*\)"
+    r"|(?<![A-Za-z0-9_.-])(?:-?\d+\.\d+\s*,\s*-?\d+(?:\.\d+)?(?:\s*,\s*-?\d+(?:\.\d+)?)*"
+    r"|-?\d+\s*,\s*-?\d+\.\d+(?:\s*,\s*-?\d+(?:\.\d+)?)*"
+    r"|-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?(?:\s*,\s*-?\d+(?:\.\d+)?)*)(?![A-Za-z0-9_.-]))"
+)
+
+
+def sanitize_card55_text(text: str) -> str:
+    """Redact any coordinate-bearing tokens (at=..., pos|..., posmm|..., Vp|rt|..., float/int coordinate tuples) from Card 55 logs."""
+    if not isinstance(text, str) or not text:
+        return ""
+    out = _COORD_AT_RE.sub(lambda m: f"{m.group('key')}=<redacted>", text)
+    out = _COORD_POS_RE.sub("pos|<redacted>", out)
+    out = _COORD_VP_RT_RE.sub("Vp|rt|<redacted>", out)
+    clean_lines = []
+    for line in out.splitlines():
+        s = line.strip()
+        if re.match(r"^[!~=k]?\s*(?:pos|posmm|facing)\b", s):
+            field = re.sub(r"^[!~=k]?\s*", "", s).split()[0]
+            mark = s[0] + " " if s and s[0] in "!~=k" else "  "
+            clean_lines.append(f" {mark}{field:<26} <redacted>")
+        else:
+            clean_lines.append(_COORD_TUPLE_RE.sub("<coords-redacted>", line))
+    return "\n".join(clean_lines)
+
+
+def _parse_selector(value: str, expected_hash: str | None = None) -> tuple[str, int]:
+    if not isinstance(value, str) or "_UNAVAILABLE" in value:
+        raise ValueError(f"unpinned selector {value!r}")
+    m = SELECTOR_RE.fullmatch(value.strip())
+    if not m:
+        raise ValueError(f"invalid selector syntax {value!r}")
+    content_hash, cell_str = m.group(1), m.group(2)
+    cell = int(cell_str)
+    if cell >= (1 << 32):
+        raise ValueError(f"selector cell ordinal out of range: {cell}")
+    if expected_hash is not None and content_hash != expected_hash:
+        raise ValueError(f"selector content_hash mismatch: {content_hash} != {expected_hash}")
+    return content_hash, cell
+
+
+def parse_navigate_astar_args(payload: str, expected_hash: str | None = None) -> dict:
+    if not isinstance(payload, str) or not payload.strip():
+        raise ValueError("navigate_astar requires '<Sim> [start=simnav:<16hex>:<cell>] goal=simnav:<16hex>:<cell>'")
+    tokens = payload.strip().split()
+    sim = tokens[0]
+    if "=" in sim or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]*", sim):
+        raise ValueError(f"invalid navigate_astar Sim name {sim!r}")
+    kv: dict[str, str] = {}
+    for tok in tokens[1:]:
+        key, sep, val = tok.partition("=")
+        if not sep or key not in ("start", "goal") or key in kv or not val:
+            raise ValueError(f"invalid navigate_astar token {tok!r}")
+        kv[key] = val
+    if "goal" not in kv:
+        raise ValueError("navigate_astar requires goal=simnav:<16hex>:<cell>")
+    goal_hash, goal_cell = _parse_selector(kv["goal"], expected_hash)
+    start_cell = None
+    if "start" in kv:
+        _, start_cell = _parse_selector(kv["start"], goal_hash)
+    return {"sim": sim, "content_hash": goal_hash, "start_cell": start_cell, "goal_cell": goal_cell}
+
+
+def card55_preflight_gap(spec: dict) -> str | None:
+    """Validate Card 55 scenario prerequisites before reset/ensure_player ever touch a game."""
+    items = list(spec.get("steps", [])) + list(spec.get("after", []))
+    used = [item for item in items if item.partition(":")[0] in RUST_ONLY_KINDS]
+    if not used:
+        return None
+    problems: list[str] = []
+    start = spec.get("start")
+    has_unpinned_nav = any("_UNAVAILABLE" in s for s in spec.get("steps", []) if s.startswith("navigate_astar:"))
+    if isinstance(start, str):
+        start_path = HOME.parent / (start if start.endswith(".json") else start + ".json")
+        if not start_path.exists():
+            problems.append(f"missing start file {start_path.name}")
+        elif start == "home" and (spec.get("name") == "routed_walk_multiroom_lot" or has_unpinned_nav):
+            problems.append("start 'home' is not a measured library start")
+    elif "start" in spec and not start:
+        problems.append("missing measured start spot")
+
+    seen_hash: str | None = None
+    for item in used:
+        kind, _, payload = item.partition(":")
+        if kind == "load-simnav" and payload != "memory":
+            problems.append(f"load-simnav requires 'memory', got {payload!r}")
+        elif kind == "rust-env" and payload not in ("SIMSONLINE_RUST_ROUTE=1", "SIMSONLINE_RUST_ROAD_PLACE=1"):
+            problems.append(f"unsupported rust-env payload {payload!r}")
+        elif kind == "navigate_astar" and ("=" in payload or "_UNAVAILABLE" in payload or spec.get("name") == "routed_walk_multiroom_lot"):
+            try:
+                parsed = parse_navigate_astar_args(payload, seen_hash)
+                seen_hash = parsed["content_hash"]
+            except ValueError as exc:
+                problems.append(str(exc))
+        elif kind == "rust-evidence" and payload not in ("E1", "E2", "E3", "E4", "E5"):
+            problems.append(f"unknown rust-evidence gate {payload!r}")
+
+    if problems:
+        return "card 55 preflight: " + "; ".join(problems)
+    return None
+
+
+class Card55Scope:
+    """In-memory Card 55 scenario runner scope and fail-closed step/evidence adapters (zero coordinates persisted)."""
+
+    def __init__(self, *, run_id: str = "card55-run", boot_id: str = "boot-1", server_pid: int = 1,
+                 epoch: int = 1, generation: int = 1, owner: str = "player1",
+                 player_id: int | None = None, conn_id: int | None = None,
+                 lot_id: int = DEFAULT_LIBRARY_LOT, admin_factory=None,
+                 server_endpoint: str = SERVER,
+                 client_endpoints: dict[str, str] | None = None,
+                 e1_sources: dict | None = None,
+                 continuity_metrics: dict | None = None,
+                 e5_sampler=None,
+                 archive_dir: Path | None = None) -> None:
+        self.run_id = run_id
+        self.boot_id = boot_id
+        self.server_pid = server_pid
+        self.epoch = epoch
+        self.generation = generation
+        self.corr = 1
+        self.actor = 0
+        self.sim_name = ""
+        self.kernel_actor = 0
+        self.owner = owner
+        self._explicit_player_id = player_id
+        if isinstance(owner, str):
+            m_owner = re.fullmatch(r"player([1-9]\d*)", owner.strip())
+            self.player_id = int(m_owner.group(1)) if m_owner else None
+        else:
+            self.player_id = None
+        if player_id is not None:
+            if type(player_id) is int and player_id >= 1:
+                if owner is None:
+                    self.owner = f"player{player_id}"
+                    self.player_id = player_id
+                elif isinstance(owner, str) and owner.strip() == f"player{player_id}":
+                    self.player_id = player_id
+                else:
+                    self.player_id = None
+            else:
+                self.player_id = None
+        self.conn_id = conn_id
+        self.lot_id = lot_id
+        self.start_ns = 100
+        self.end_ns = 200
+        self.bridge_connected = True
+        self.claim_held = False
+        self.instrument_ready = True
+        self.content_hash: str | None = None
+        self.e2_before: str | None = None
+        self.attempted_walks: list[dict] = []
+        self.executed_walks: list[dict] = []
+        self.walks = self.attempted_walks
+        self.executed_routes = 0
+        self.admin_factory = admin_factory
+        self.server_endpoint = server_endpoint
+        self.client_endpoints = client_endpoints or {
+            "client1": compare_client.resolve("1"),
+            "client2": compare_client.resolve("2"),
+        }
+        self.e1_sources = e1_sources
+        self.continuity_metrics = continuity_metrics
+        self.e5_sampler = e5_sampler
+        self.archive_dir = archive_dir
+
+    def _admin(self, endpoint: str):
+        import card55_live as live
+        factory = self.admin_factory or live.Admin
+        return factory(endpoint)
+
+    def scope_dict(self, *, corr: int | None = None) -> dict:
+        return {
+            "run_id": self.run_id,
+            "boot_id": self.boot_id,
+            "server_pid": self.server_pid,
+            "epoch": self.epoch,
+            "corr": self.corr if corr is None else corr,
+            "actor": self.actor if self.actor > 0 else 1,
+            "generation": self.generation,
+            "owner": self.owner,
+            "start_ns": self.start_ns,
+            "end_ns": self.end_ns,
+            "bridge_connected": self.bridge_connected,
+            "claim_held": self.claim_held,
+            "instrument_ready": self.instrument_ready,
+            "coverage_start_ns": self.start_ns,
+            "coverage_end_ns": self.end_ns,
+            "collector_status": "complete",
+        }
+
+    def _observation(self, extra: dict, *, corr: int | None = None) -> dict:
+        s = self.scope_dict(corr=corr)
+        base = {
+            "schema_version": 1,
+            "scope": {k: s[k] for k in ("run_id", "boot_id", "server_pid", "epoch", "corr",
+                                        "actor", "generation", "owner", "start_ns", "end_ns")},
+            "owner": self.owner,
+            "bridge_connected": self.bridge_connected,
+            "claim_held": self.claim_held,
+            "instrument_ready": self.instrument_ready,
+            "coverage_start_ns": self.start_ns,
+            "coverage_end_ns": self.end_ns,
+            "collector_status": "complete",
+        }
+        base.update(extra)
+        return base
+
+    def execute(self, kind: str, payload: str) -> dict:
+        import card55_live as live
+        import routing_evidence as evidence
+        if kind == "claim-sim":
+            return self._exec_claim_sim(payload, live, evidence)
+        if kind == "rust-env":
+            return self._exec_rust_env(payload, live, evidence)
+        if kind == "load-simnav":
+            return self._exec_load_simnav(payload, live, evidence)
+        if kind == "navigate_astar":
+            return self._exec_navigate_astar(payload, live, evidence)
+        if kind == "rust-evidence":
+            return self._exec_rust_evidence(payload, live, evidence)
+        raise ValueError(f"unknown Rust step {kind}")
+
+    def _resolve_expected_player_id(self) -> tuple[int | None, str | None]:
+        raw_owner = self.owner
+        if not isinstance(raw_owner, str) or not raw_owner.strip():
+            return None, "claim-sim: expected player_id cannot be established from owner"
+        m_owner = re.fullmatch(r"player([1-9]\d*)", raw_owner.strip())
+        if not m_owner:
+            return None, f"claim-sim: expected player_id cannot be established from owner {raw_owner!r}"
+        owner_pid = int(m_owner.group(1))
+        if self._explicit_player_id is not None:
+            if type(self._explicit_player_id) is not int or self._explicit_player_id < 1:
+                return None, "claim-sim: invalid explicit player_id"
+            if self._explicit_player_id != owner_pid:
+                return None, "claim-sim: explicit player_id conflicts with owner"
+        if self.player_id is not None:
+            if type(self.player_id) is not int or self.player_id < 1 or self.player_id != owner_pid:
+                return None, "claim-sim: player_id conflicts with owner"
+        return owner_pid, None
+
+    def _exec_claim_sim(self, payload: str, live, evidence) -> dict:
+        sim_name = payload.strip()
+        if not sim_name:
+            return evidence.result("BLOCKED", "claim-sim: missing Sim name")
+        expected_player_id, owner_err = self._resolve_expected_player_id()
+        if owner_err or expected_player_id is None:
+            self.kernel_actor = 0
+            self.claim_held = False
+            return evidence.result("BLOCKED", owner_err or "claim-sim: expected player_id cannot be established from owner")
+        expected_conn_id = self.conn_id
+        if expected_conn_id is not None and (type(expected_conn_id) is not int or expected_conn_id <= 0 or expected_conn_id >= (1 << 64)):
+            self.kernel_actor = 0
+            self.claim_held = False
+            return evidence.result("BLOCKED", "claim-sim: invalid expected conn_id")
+        try:
+            server_admin = self._admin(self.server_endpoint)
+            status_raw = server_admin.request("SACS_RECORDER rust-navigation-status")
+            raw_claims = [
+                field.partition("=")[2].strip()
+                for field in re.split(r"[|;\n]", status_raw if isinstance(status_raw, str) else "")
+                if field.partition("=")[0].strip() == "actor_claim"
+            ]
+            fields = live.counter_fields(status_raw)
+        except Exception as exc:
+            self.kernel_actor = 0
+            self.claim_held = False
+            return evidence.result("BLOCKED", f"claim-sim: {exc}")
+
+        if "epoch" in fields and fields["epoch"].isdigit() and int(fields["epoch"]) > 0:
+            self.epoch = int(fields["epoch"])
+        if "generation" in fields and fields["generation"].isdigit() and int(fields["generation"]) > 0:
+            self.generation = int(fields["generation"])
+
+        expected_wire = SIM_WIRE_IDS.get(sim_name.lower(), 0)
+        reported_sim = fields.get("sim", "").strip()
+        status_actor = int(fields["actor"]) if re.fullmatch(r"[1-9][0-9]*", fields.get("actor", "")) else 0
+        if expected_wire > 0:
+            target_wire = expected_wire
+        elif reported_sim.lower() == sim_name.lower() and status_actor > 0:
+            target_wire = status_actor
+        else:
+            target_wire = 0
+
+        if target_wire > 0:
+            self.actor = target_wire
+        self.sim_name = sim_name
+
+        # Strict per-actor claim check: global mapping_checked=1 or actor+kernel_sim without a complete
+        # Sim-bound, owner-matching per-actor (conn_id, player_id, wire_u64, kernel_u32) tuple is NEVER sufficient.
+        sim_binding_ok = (
+            (bool(reported_sim) and reported_sim.lower() == sim_name.lower() and (status_actor == 0 or status_actor == target_wire))
+            or (not reported_sim and expected_wire > 0 and status_actor == expected_wire)
+        )
+        claim_tokens: list[str] = []
+        for raw_claim in (raw_claims or ([fields["actor_claim"]] if "actor_claim" in fields else [])):
+            for tok in re.split(r"[,\s]+", raw_claim.strip()):
+                if tok:
+                    claim_tokens.append(tok)
+
+        has_verified_pair = False
+        kernel_sim = 0
+        if sim_binding_ok and target_wire > 0 and claim_tokens:
+            matching_target_tuples: list[tuple[int, int, int, int]] = []
+            malformed_claim = False
+            for tok in claim_tokens:
+                parts = tok.split(":")
+                if len(parts) != 4 or not all(re.fullmatch(r"[1-9][0-9]*", p) for p in parts):
+                    malformed_claim = True
+                    break
+                c_conn, c_player, c_wire, c_kernel = (int(p) for p in parts)
+                if c_wire == target_wire:
+                    matching_target_tuples.append((c_conn, c_player, c_wire, c_kernel))
+
+            if not malformed_claim and len(set(matching_target_tuples)) > 1:
+                self.kernel_actor = 0
+                self.claim_held = False
+                return evidence.result("BLOCKED", f"claim-sim: conflicting actor_claim tuples for wire_u64 {target_wire}")
+
+            if not malformed_claim and len(set(matching_target_tuples)) == 1:
+                c_conn, c_player, c_wire, c_kernel = matching_target_tuples[0]
+                owner_ok = (expected_player_id is not None
+                            and c_player == expected_player_id
+                            and (expected_conn_id is None or c_conn == expected_conn_id)
+                            and (not fields.get("actor") or status_actor == c_wire)
+                            and (not fields.get("kernel_sim") or fields.get("kernel_sim") == str(c_kernel)))
+                if (0 < c_conn < (1 << 64) and c_player > 0 and c_wire == target_wire
+                        and c_wire < (1 << 64) and 2 <= c_kernel < (1 << 32) and owner_ok):
+                    kernel_sim = c_kernel
+                    has_verified_pair = True
+
+        self.kernel_actor = kernel_sim if has_verified_pair else 0
+        self.claim_held = has_verified_pair
+        obs = self._observation({
+            "sim_name": sim_name,
+            "kernel_actor": self.kernel_actor,
+            "mapping_checked": bool(has_verified_pair),
+        })
+        return evidence.step_observation("claim-sim", sim_name, self.scope_dict(), obs)
+
+    def _exec_rust_env(self, payload: str, live, evidence) -> dict:
+        if payload not in ("SIMSONLINE_RUST_ROUTE=1", "SIMSONLINE_RUST_ROAD_PLACE=1"):
+            return evidence.result("BLOCKED", "unsupported route switch requirement")
+        try:
+            try:
+                from . import card55_g0
+            except ImportError:
+                import card55_g0
+            server_admin = self._admin(self.server_endpoint)
+            sacs_status = server_admin.request("SACS_RECORDER status")
+            road_status = server_admin.request("SACS_RECORDER road-place-census")
+            front_door = server_admin.request("FRONT_DOOR_STATE")
+            fd_fields = live.counter_fields(front_door)
+            for key in ("navigate_requests", "plans_served", "native_oracle_owned"):
+                val = fd_fields.get(key)
+                if not isinstance(val, str) or not re.fullmatch(r"[0-9]+", val):
+                    return evidence.result("BLOCKED", f"unmeasured or missing {key} in FRONT_DOOR_STATE")
+            route_on = "rustRoute:on" in sacs_status or "rust-route=on" in sacs_status or "rustRoute=on" in sacs_status
+            try:
+                road_mode, _ = card55_g0.census(road_status)
+                road_on = road_mode == "on"
+                census_complete = True
+            except ValueError:
+                road_on = False
+                census_complete = False
+            suppression_ok = True
+            for side, ep in self.client_endpoints.items():
+                c_reply = self._admin(ep).request("SACS_RECORDER authority")
+                c_fields = live.counter_fields(c_reply)
+                if not (c_fields.get("suppression_complete") in ("1", "true", "True")
+                        or (c_fields.get("role") == "client"
+                            and c_fields.get("presenter_hook") == "present"
+                            and c_fields.get("authority_hook") == "present"
+                            and c_fields.get("puppet_suppressed") in ("1", "true", "True"))):
+                    suppression_ok = False
+            self.e2_before = front_door
+        except Exception as exc:
+            return evidence.result("BLOCKED", f"rust-env: {exc}")
+
+        obs = self._observation({
+            "route_enabled": bool(route_on and road_on),
+            "census_complete": bool(census_complete),
+            "suppression_complete": bool(suppression_ok),
+        })
+        return evidence.step_observation("rust-env", "SIMSONLINE_RUST_ROUTE=1", self.scope_dict(), obs)
+
+    def _exec_load_simnav(self, payload: str, live, evidence) -> dict:
+        if payload != "memory":
+            return evidence.step_observation("load-simnav", payload, self.scope_dict(), self._observation({"topology": {}}))
+        if not self.claim_held:
+            return evidence.result("BLOCKED", "load-simnav requires claimed Sim (claim-sim first)")
+        try:
+            server_admin = self._admin(self.server_endpoint)
+            actor_arg = f" {self.actor}" if self.actor > 0 else ""
+            reply = server_admin.request(f"SACS_RECORDER rust-simnav-install {self.lot_id}{actor_arg}")
+            fields = live.counter_fields(reply)
+            if fields.get("rust-simnav-install") != "accepted":
+                reason = fields.get("reason", "install not accepted")
+                return evidence.result("BLOCKED", f"load-simnav refused: {reason}")
+            status_reply = server_admin.request("SACS_RECORDER rust-navigation-status")
+            s_fields = live.counter_fields(status_reply)
+            if "epoch" in fields and fields["epoch"].isdigit():
+                self.epoch = int(fields["epoch"])
+            if "generation" in fields and fields["generation"].isdigit():
+                self.generation = int(fields["generation"])
+            if "actor" in fields and fields["actor"].isdigit() and int(fields["actor"]) > 0:
+                self.actor = int(fields["actor"])
+            if "kernel_sim" in fields and fields["kernel_sim"].isdigit() and int(fields["kernel_sim"]) >= 2:
+                self.kernel_actor = int(fields["kernel_sim"])
+            content_hash = fields.get("content_hash") or s_fields.get("content_hash", "")
+            cells = int(fields["cells"]) if fields.get("cells", "").isdigit() else 0
+            portals = int(fields["portals"]) if fields.get("portals", "").isdigit() else 0
+            topology = {
+                "provenance": fields.get("provenance", s_fields.get("provenance", "")),
+                "storage": fields.get("storage", s_fields.get("storage", "")),
+                "inferred_partition": s_fields.get("inferred_partition", "0") in ("1", "true", "True"),
+                "inferred_stairs": s_fields.get("inferred_stairs", "0") in ("1", "true", "True"),
+                "surfaces_measured": s_fields.get("surfaces_measured", "1" if fields.get("provenance") == "measured" else "0") in ("1", "true", "True"),
+                "portals_measured": s_fields.get("portals_measured", "1" if fields.get("provenance") == "measured" else "0") in ("1", "true", "True"),
+                "obstacles_and_locks_measured": s_fields.get("obstacles_and_locks_measured", "1" if fields.get("provenance") == "measured" else "0") in ("1", "true", "True"),
+                "cross_lot_measured": s_fields.get("cross_lot_measured", "1" if fields.get("provenance") == "measured" else "0") in ("1", "true", "True"),
+                "cells": cells,
+                "portals": portals,
+                "content_hash": content_hash,
+            }
+        except Exception as exc:
+            return evidence.result("BLOCKED", f"load-simnav: {exc}")
+
+        out = evidence.step_observation("load-simnav", "memory", self.scope_dict(), self._observation({"topology": topology}))
+        if out["verdict"] == "PASS":
+            self.content_hash = content_hash
+        return out
+
+    def _exec_navigate_astar(self, payload: str, live, evidence) -> dict:
+        try:
+            parsed = parse_navigate_astar_args(payload, self.content_hash)
+        except ValueError as exc:
+            return evidence.result("BLOCKED", f"navigate_astar: {exc}")
+        walk_corr = len(self.attempted_walks) + 1
+        self.corr = walk_corr
+        walk_entry = {"corr": walk_corr, **parsed}
+        self.attempted_walks.append(walk_entry)
+        # Delegate to routing_evidence.step_observation("navigate_astar", ...) which honestly blocks
+        # until owner-gated gameplay trigger and OPEN-1/OPEN-2 execution adapters land.
+        outcome = evidence.step_observation("navigate_astar", payload, self.scope_dict(corr=walk_corr), None)
+        if outcome["verdict"] == "PASS":
+            self.executed_walks.append(walk_entry)
+            self.executed_routes += 1
+        return outcome
+
+    def _archive_put(self, name: str, row: dict) -> None:
+        if self.archive_dir is not None:
+            import card55_live as live
+            live.Archive(self.archive_dir).put(name, row)
+
+    def _exec_rust_evidence(self, gate: str, live, evidence) -> dict:
+        gate = gate.strip()
+        if gate not in ("E1", "E2", "E3", "E4", "E5"):
+            return evidence.result("BLOCKED", "unknown evidence selector; use exactly E1, E2, E3, E4 or E5")
+        try:
+            if gate == "E1":
+                if not isinstance(self.e1_sources, dict):
+                    row = live._row("E1")
+                else:
+                    row = live.collect_e1(
+                        self.scope_dict(),
+                        self.e1_sources.get("trace", {}),
+                        self.e1_sources.get("control", {}),
+                        self.e1_sources.get("fork", {}),
+                    )
+                self._archive_put("E1", row)
+                return evidence.result(row["verdict"], f"E1 {row['verdict']}: counts={json.dumps(row['counts'], sort_keys=True)}")
+
+            if gate == "E2":
+                routes = self.executed_routes if self.executed_routes > 0 else len(self.executed_walks)
+                if not self.e2_before or routes <= 0:
+                    row = live._row("E2")
+                else:
+                    after = self._admin(self.server_endpoint).request("FRONT_DOOR_STATE")
+                    # Never substitute attempted/blocked walk count for independently observed executed_routes.
+                    row = live.collect_e2(self.scope_dict(), self.e2_before, after, routes)
+                self._archive_put("E2", row)
+                return evidence.result(row["verdict"], f"E2 {row['verdict']}: counts={json.dumps(row['counts'], sort_keys=True)}")
+
+            walks = self.executed_walks or self.attempted_walks or [{"corr": self.corr}]
+            walk_rows = []
+            for idx, w in enumerate(walks, 1):
+                w_corr = w["corr"]
+                w_scope = self.scope_dict(corr=w_corr)
+                if gate == "E3":
+                    reqs = {
+                        "daemon": self._admin(self.server_endpoint).plan_page(w_corr, w_scope["actor"], client=False),
+                        "client1": self._admin(self.client_endpoints["client1"]).plan_page(w_corr, w_scope["actor"], client=True, progress=False),
+                        "client2": self._admin(self.client_endpoints["client2"]).plan_page(w_corr, w_scope["actor"], client=True, progress=False),
+                    }
+                    r = live.collect_e3(w_scope, reqs)
+                elif gate == "E4":
+                    reqs = {
+                        "client1": self._admin(self.client_endpoints["client1"]).plan_page(w_corr, w_scope["actor"], client=True, progress=True),
+                        "client2": self._admin(self.client_endpoints["client2"]).plan_page(w_corr, w_scope["actor"], client=True, progress=True),
+                    }
+                    cont = self.continuity_metrics.get(w_corr, self.continuity_metrics) if isinstance(self.continuity_metrics, dict) else {}
+                    r = live.collect_e4(w_scope, reqs, cont)
+                else:  # E5
+                    if self.e5_sampler is not None:
+                        r = self.e5_sampler(w_scope)
+                    else:
+                        import sim_compare
+                        sampled = sim_compare.sample_e5_bracket(
+                            self.sim_name or "Jennifer",
+                            scope=w_scope,
+                            server_endpoint=self.server_endpoint,
+                            client_endpoints=self.client_endpoints,
+                            admin_factory=self.admin_factory,
+                        )
+                        r = {k: sampled[k] for k in ("gate", "verdict", "hashes", "counts", "errors_mm")}
+                self._archive_put(f"walk-{idx}-{gate}", r)
+                walk_rows.append(r)
+
+            combined = walk_rows[0] if len(walk_rows) == 1 else live.combine_walks(gate, walk_rows)
+            self._archive_put(gate, combined)
+            summary = f"{gate} {combined['verdict']}: counts={json.dumps(combined['counts'], sort_keys=True)} errors_mm={json.dumps(combined['errors_mm'], sort_keys=True)}"
+            return evidence.result(combined["verdict"], summary)
+        except Exception as exc:
+            return evidence.result("BLOCKED", f"{gate}: {exc}")
+
+
+# Offline fail-closed step adapters (never touch live games; validate state/targets strictly in memory).
+def _offline_state(state: dict | None) -> dict:
+    if not isinstance(state, dict) or not state.get("offline", True):
+        raise ValueError("offline state dictionary required (live game execution is forbidden)")
+    return state
+
+
+def _require_sim_entry(state: dict, sim: str) -> dict:
+    if not isinstance(sim, str) or not sim.strip():
+        raise ValueError("missing Sim name")
+    sims = state.get("sims")
+    if not isinstance(sims, dict) or sim not in sims or not isinstance(sims[sim], dict):
+        raise ValueError(f"Sim {sim!r} not found in offline state")
+    return sims[sim]
+
+
+def set_sim_pose(sim: str, pose: str, *, state: dict | None = None) -> dict:
+    try:
+        st = _offline_state(state)
+        entry = _require_sim_entry(st, sim)
+        if not isinstance(pose, str) or not pose.strip():
+            raise ValueError("missing pose name")
+        allowed = st.get("valid_poses")
+        if isinstance(allowed, (set, list, tuple)) and pose not in allowed:
+            raise ValueError(f"unsupported pose {pose!r}")
+        entry["pose"] = pose.strip()
+        return {"verdict": "PASS", "reason": f"set_sim_pose {sim} -> {pose.strip()}"}
+    except Exception as exc:
+        return {"verdict": "BLOCKED", "reason": f"set_sim_pose: {exc}"}
+
+
+def route_and_wait(sim: str, goal_cell: str | int, *, state: dict | None = None) -> dict:
+    try:
+        st = _offline_state(state)
+        entry = _require_sim_entry(st, sim)
+        cells = st.get("cells")
+        if not isinstance(cells, (dict, set, list, tuple)):
+            raise ValueError("no measured navigation cells in offline state")
+        if isinstance(goal_cell, str) and goal_cell.startswith("simnav:"):
+            content_hash, ordinal = _parse_selector(goal_cell, st.get("content_hash"))
+            key = ordinal if ordinal in cells else goal_cell
+        else:
+            key = int(goal_cell) if isinstance(goal_cell, str) and goal_cell.isdigit() else goal_cell
+        if key not in cells:
+            raise ValueError(f"goal cell {goal_cell!r} not reachable in offline topology")
+        if isinstance(cells, dict) and isinstance(cells[key], dict) and cells[key].get("reachable") is False:
+            return {"verdict": "FAIL", "reason": f"route_and_wait: cell {goal_cell!r} unreachable"}
+        entry["cell"] = key
+        entry["WalkPhase"] = "Halted"
+        return {"verdict": "PASS", "reason": f"route_and_wait {sim} -> cell {key}"}
+    except Exception as exc:
+        return {"verdict": "BLOCKED", "reason": f"route_and_wait: {exc}"}
+
+
+def route_to_object(sim: str, target_object: str, *, state: dict | None = None) -> dict:
+    try:
+        st = _offline_state(state)
+        entry = _require_sim_entry(st, sim)
+        if not isinstance(target_object, str) or not target_object.strip():
+            raise ValueError("missing target object")
+        objects = st.get("objects")
+        if not isinstance(objects, dict) or target_object not in objects or not isinstance(objects[target_object], dict):
+            raise ValueError(f"object {target_object!r} not found in offline state")
+        obj = objects[target_object]
+        if obj.get("routable", True) is False:
+            return {"verdict": "FAIL", "reason": f"route_to_object: object {target_object!r} not routable"}
+        if "cell" in obj:
+            entry["cell"] = obj["cell"]
+        entry["target_object"] = target_object
+        entry["WalkPhase"] = "Halted"
+        return {"verdict": "PASS", "reason": f"route_to_object {sim} -> {target_object}"}
+    except Exception as exc:
+        return {"verdict": "BLOCKED", "reason": f"route_to_object: {exc}"}
+
+
+def cancel_interaction(sim: str, interaction: str = "", *, state: dict | None = None) -> dict:
+    try:
+        st = _offline_state(state)
+        entry = _require_sim_entry(st, sim)
+        queue = entry.get("queue")
+        if not isinstance(queue, list) or not queue:
+            raise ValueError(f"no active interaction to cancel on {sim}")
+        target = interaction.strip()
+        if target:
+            if target not in queue:
+                raise ValueError(f"interaction {target!r} not in {sim}'s queue")
+            queue.remove(target)
+        else:
+            target = str(queue.pop(0))
+        return {"verdict": "PASS", "reason": f"cancel_interaction {sim}: cancelled {target}"}
+    except Exception as exc:
+        return {"verdict": "BLOCKED", "reason": f"cancel_interaction: {exc}"}
+
+
+def teleport_sim(sim: str, destination: str | int, *, state: dict | None = None) -> dict:
+    try:
+        st = _offline_state(state)
+        if st.get("card55_mode"):
+            raise ValueError("teleport_sim is forbidden in Card 55 routed-walk acceptance")
+        entry = _require_sim_entry(st, sim)
+        spots = st.get("spots") or st.get("cells")
+        if not isinstance(spots, (dict, set, list, tuple)) or destination not in spots:
+            raise ValueError(f"destination {destination!r} not found in offline state")
+        entry["cell"] = destination
+        return {"verdict": "PASS", "reason": f"teleport_sim {sim} -> {destination}"}
+    except Exception as exc:
+        return {"verdict": "BLOCKED", "reason": f"teleport_sim: {exc}"}
+
+
+def switch_active_household(household: str, *, state: dict | None = None) -> dict:
+    try:
+        st = _offline_state(state)
+        if not isinstance(household, str) or not household.strip():
+            raise ValueError("missing household name")
+        households = st.get("households")
+        if not isinstance(households, (dict, set, list, tuple)) or household not in households:
+            raise ValueError(f"household {household!r} not found in offline state")
+        st["active_household"] = household
+        return {"verdict": "PASS", "reason": f"switch_active_household -> {household}"}
+    except Exception as exc:
+        return {"verdict": "BLOCKED", "reason": f"switch_active_household: {exc}"}
+
+
+def reset_sim(sim: str, *, state: dict | None = None) -> dict:
+    try:
+        st = _offline_state(state)
+        entry = _require_sim_entry(st, sim)
+        entry["queue"] = []
+        entry["pose"] = "standing"
+        entry["WalkPhase"] = "Halted"
+        if "home_cell" in entry:
+            entry["cell"] = entry["home_cell"]
+        return {"verdict": "PASS", "reason": f"reset_sim {sim}"}
+    except Exception as exc:
+        return {"verdict": "BLOCKED", "reason": f"reset_sim: {exc}"}
+
+
+OFFLINE_STEP_ADAPTERS = {
+    "set_sim_pose": lambda payload, state: set_sim_pose(*([p.strip() for p in payload.split(":", 1)] + [""])[:2], state=state),
+    "route_and_wait": lambda payload, state: route_and_wait(*([p.strip() for p in payload.split(":", 1)] + [""])[:2], state=state),
+    "route_to_object": lambda payload, state: route_to_object(*([p.strip() for p in payload.split(":", 1)] + [""])[:2], state=state),
+    "cancel_interaction": lambda payload, state: cancel_interaction(*([p.strip() for p in payload.split(":", 1)] + [""])[:2], state=state),
+    "teleport_sim": lambda payload, state: teleport_sim(*([p.strip() for p in payload.split(":", 1)] + [""])[:2], state=state),
+    "switch_active_household": lambda payload, state: switch_active_household(payload.strip(), state=state),
+    "reset_sim": lambda payload, state: reset_sim(payload.strip(), state=state),
+}
 
 
 def rust_step_result(kind: str, payload: str, scope=None, observation=None) -> dict:
-    """Reserved result parser; no K/C/F/M execution adapter is installed."""
+    """Validate or execute a Card 55 step/check through Card55Scope or routing_evidence.step_observation."""
     import routing_evidence
+    if isinstance(scope, Card55Scope) and observation is None:
+        return scope.execute(kind, payload)
     return routing_evidence.step_observation(kind, payload, scope, observation)
 
 
 def rust_only_gap(spec: dict) -> str | None:
-    """BLOCKED reason when the scenario uses a Rust-only kind that has no executor, else None."""
+    """BLOCKED reason when the scenario uses a Rust-only kind that has no executor or fails Card 55 preflight, else None."""
     kinds = sorted({item.partition(":")[0] for item in spec.get("steps", []) + spec.get("after", [])}
                    & (set(RUST_ONLY_KINDS) - RUST_ONLY_EXECUTORS))
-    if not kinds:
-        return None
-    details = [rust_step_result(kind, "")["reason"] for kind in kinds]
-    return f"card 55 mechanism not built: no executor for {', '.join(kinds)}; " + "; ".join(details)
+    if kinds:
+        details = [rust_step_result(kind, "")["reason"] for kind in kinds]
+        return f"card 55 mechanism not built: no executor for {', '.join(kinds)}; " + "; ".join(details)
+    return card55_preflight_gap(spec)
 
 
 def late_blocked(record: dict, blocked_late: bool) -> bool:
@@ -1591,33 +2319,41 @@ def run_scenario(spec: dict, out: Path) -> dict:
         record["timings"][phase] = round(now - clock[0], 1)
         clock[0] = now
 
+    card55_mode = is_card55_scenario(spec)
+
+    def scrub(text: str) -> str:
+        return sanitize_card55_text(text) if card55_mode else text
+
     household = spec.get("household") or HOUSEHOLD
     paused = resume_paused(spec, list(endpoints.values()))
     if paused:
-        record["paused"] = paused
-        record["log"].append("## speed\n" + paused)
+        record["paused"] = scrub(paused)
+        record["log"].append("## speed\n" + scrub(paused))
     players = players_for(spec, watched)
     for player, sim in players.items():
         ok, text = ensure_player(player, sim)
-        record["log"].append(f"## player {player}\n" + text)
+        record["log"].append(f"## player {player}\n" + scrub(text))
         if not ok:
             # a precondition: the scenario is about that player on that Sim, and the rejoin never landed there
             reason = next((line for line in reversed(text.splitlines()) if line.startswith(f"player {player} now on")),
                           text.splitlines()[-1])
             record.update(verdict="RESET-FAILED", met=False,
-                          failures=[f"reset: player {player} not on {sim}: {reason[:160]}"])
+                          failures=[f"reset: player {player} not on {sim}: {scrub(reason)[:160]}"])
             return record
-    record["log"].append("## reset\n" + reset(spec.get("start"), list(endpoints.values()), note=record, household=household,
-                                                player2=spec_players(spec)))
+    reset_log = reset(spec.get("start"), list(endpoints.values()), note=record, household=household,
+                      player2=spec_players(spec))
+    if card55_mode and record.get("start"):
+        record["start"] = [scrub(s) for s in record["start"]]
+    record["log"].append("## reset\n" + scrub(reset_log))
     problems, gate = reset_check(household, players, list(endpoints.values()))
-    record["log"].append("## reset check\n" + "\n".join(gate))
+    record["log"].append("## reset check\n" + scrub("\n".join(gate)))
     if uses_notices(spec):
         _, text = quick_step("notices:mark")  # notice:/nonotice: read only what this scenario showed
-        record["log"].append("## notices:mark\n" + _tail(text, 2))
+        record["log"].append("## notices:mark\n" + scrub(_tail(text, 2)))
     lap("reset")
     if problems:
         # the reset's own failure, and nothing about the code under test: the scenario never started
-        record.update(verdict="RESET-FAILED", met=False, failures=problems)
+        record.update(verdict="RESET-FAILED", met=False, failures=[scrub(p) for p in problems])
         return record
     replay_before = replay_snapshot(False)  # after the reset: its repairs are not the scenario's
     # rose: excludes reset and premise effects; a successful premise refreshes this baseline after its fault injection.
@@ -1640,7 +2376,9 @@ def run_scenario(spec: dict, out: Path) -> dict:
         if stop_file.exists():
             stop_file.unlink()
 
-    watch = spec.get("watch")
+    watch = None if card55_mode else spec.get("watch")
+    card55_scope = spec.get("_card55_scope")
+    offline_state = spec.get("_offline_state")
     watch_results: dict[str, dict] = {c: {} for c in watched}
     watchers = []
     watch_since = [0.0]  # when the watch started (wall clock): the window note_stream reads the logs over
@@ -1672,7 +2410,16 @@ def run_scenario(spec: dict, out: Path) -> dict:
         step = rejoin_step(expand(step, variables))
         kind, _, rest = step.partition(":")
         if kind in RUST_ONLY_KINDS:
-            outcome = rust_step_result(kind, rest)
+            outcome = rust_step_result(kind, rest, scope=card55_scope)
+            record["log"].append(f"## step {step}\n{outcome['verdict']}: {outcome['reason']}")
+            if outcome["verdict"] == "BLOCKED":
+                blocked = f"step {step}: {outcome['reason']}"
+                break
+            if outcome["verdict"] == "FAIL":
+                record["failures"].append(f"step {step}: {outcome['reason']}")
+                break
+        elif kind in OFFLINE_STEP_ADAPTERS:
+            outcome = OFFLINE_STEP_ADAPTERS[kind](rest, offline_state)
             record["log"].append(f"## step {step}\n{outcome['verdict']}: {outcome['reason']}")
             if outcome["verdict"] == "BLOCKED":
                 blocked = f"step {step}: {outcome['reason']}"
@@ -1682,12 +2429,12 @@ def run_scenario(spec: dict, out: Path) -> dict:
                 break
         elif kind == "act":
             code, text = python("scripts/sim_act.py", *_split(rest))
-            record["log"].append(f"## step {step}\n{text.strip()}")
+            record["log"].append(f"## step {step}\n{scrub(text.strip())}")
             if code != 0:
                 # The game would not run the pick (its test, or it dropped out when its turn came): a precondition of
                 # this scenario, not a presentation result. The rest is skipped.
                 why = next((ln.strip() for ln in text.splitlines() if "candidates:" in ln or "NOT running" in ln or "err" in ln), f"exit {code}")
-                blocked = f"step {step}: {why[:160]}"
+                blocked = f"step {step}: {scrub(why)[:160]}"
                 break
         elif kind == "camera":
             # camera:<games>:<Sim or x,z>[:<distance>]: point those games' cameras (server, 1, 2, or all) there. A Sim
@@ -1696,37 +2443,37 @@ def run_scenario(spec: dict, out: Path) -> dict:
             sides, _, where = rest.partition(":")
             target, _, distance = where.partition(":")
             lines = camera(camera_games(sides, endpoints), target, float(distance) if distance else 1.0)
-            record["log"].append(f"## step {step}\n" + "\n".join(lines))
+            record["log"].append(f"## step {step}\n" + scrub("\n".join(lines)))
             failed = [line for line in lines if "focused" not in line]
             if failed:
-                blocked = f"step {step}: {failed[0][:160]}"
+                blocked = f"step {step}: {scrub(failed[0])[:160]}"
                 break
         elif kind == "cpick":
             # A player's pick, made the way a click makes it. A probe that finds no target or no matching interaction
             # is a precondition, like an act: the game refused nothing yet. Whether the server ran it is a later step.
             client, _, args = rest.partition(":")
             code, text = python("scripts/client_pick.py", "--client", client, *_split(args))
-            record["log"].append(f"## step {step}\n{text.strip()}")
+            record["log"].append(f"## step {step}\n{scrub(text.strip())}")
             if code != 0:
-                blocked = f"step {step}: {text.strip().splitlines()[-1][:160] if text.strip() else f'exit {code}'}"
+                blocked = f"step {step}: {scrub(text.strip().splitlines()[-1])[:160] if text.strip() else f'exit {code}'}"
                 break
         elif kind == "households":
             # households:<household ...> [--pair A+B] as a step: the games agree before what the scenario changes
             # (two-families-buy reads both families' funds before the charge), as the after check reads them after it
             diffs, text = households_check(rest, endpoints, watched)
-            record["log"].append(f"## step {step}\n{text}" + ("\n" + "\n".join(diffs) if diffs else ""))
+            record["log"].append(f"## step {step}\n{scrub(text)}" + ("\n" + scrub("\n".join(diffs)) if diffs else ""))
             if diffs:
-                record["failures"].append(f"step {step}: " + "; ".join(diffs)[:200])
+                record["failures"].append(f"step {step}: " + scrub("; ".join(diffs))[:200])
         else:
             restarts = rejoined(step) if WATCH is not None else []
             with WATCH.hold(*restarts) if restarts else contextlib.nullcontext():
                 code, text = quick_step(step)
             variables.update(step_vars(text))
-            record["log"].append(f"## step {step}\n{_tail(text)}")
+            record["log"].append(f"## step {step}\n{scrub(_tail(text))}")
             if code != 0:
                 why = next((ln.strip() for ln in reversed(text.splitlines()) if ln.strip()), "")
                 # a player step's own reason (hud:, notice:, until:) says what was not seen; others keep the exit code
-                failure = f"step {step}: " + (why[:200] if kind in ("hud", "notice", "nonotice", "menudiff", "objectdiff", "until", "premise") and why
+                failure = f"step {step}: " + (scrub(why)[:200] if kind in ("hud", "notice", "nonotice", "menudiff", "objectdiff", "until", "premise") and why
                                               else f"exit {code}")
                 if kind in ("until", "premise"):
                     # The server never got there, so the later steps test nothing: BLOCKED at this step (P, 2026-10-21:
@@ -1752,9 +2499,11 @@ def run_scenario(spec: dict, out: Path) -> dict:
             watcher.join(timeout=900)
         if record["failures"]:
             verdict_of(record)
-            record["log"].append(f"## blocked\n{blocked}")
+            record["log"].append(f"## blocked\n{scrub(blocked)}")
         else:
-            record.update(verdict="BLOCKED", met=False, failures=[blocked])
+            record.update(verdict="BLOCKED", met=False, failures=[scrub(blocked)])
+        if multi:
+            record["clients"] = client_verdicts(record, watched)
         note_replay(record, replay_before)
         return record
 
@@ -1793,7 +2542,7 @@ def run_scenario(spec: dict, out: Path) -> dict:
         check = expand(check, variables)
         kind, _, rest = check.partition(":")
         if kind in RUST_ONLY_KINDS:
-            outcome = rust_step_result(kind, rest)
+            outcome = rust_step_result(kind, rest, scope=card55_scope)
             record["log"].append(f"## after {check}\n{outcome['verdict']}: {outcome['reason']}")
             if outcome["verdict"] != "PASS":
                 record["failures"].append(f"rust-evidence: {outcome['verdict']} {outcome['reason']}")
@@ -1801,9 +2550,10 @@ def run_scenario(spec: dict, out: Path) -> dict:
         elif kind == "sims":
             for client in watched:  # a two-client scenario compares the server with each client
                 code, text = python("scripts/sim_compare.py", *_split(rest), *(["--client", client] if multi else []))
-                record["log"].append(f"## after {check}{' (client ' + client + ')' if multi else ''}\n{text.strip()}")
+                clean_text = scrub(text.strip())
+                record["log"].append(f"## after {check}{' (client ' + client + ')' if multi else ''}\n{clean_text}")
                 if code == 3:
-                    bad = [ln.strip() for ln in text.splitlines() if ln.strip().startswith("!")]
+                    bad = [ln.strip() for ln in clean_text.splitlines() if ln.strip().startswith("!")]
                     record["failures"].append(tag(client) + "compare: " + "; ".join(re.sub(r"\s+", " ", b)[:90] for b in bad[:4]))
                 elif code != 0:
                     record["failures"].append(tag(client) + f"compare failed (exit {code})")
@@ -1811,10 +2561,10 @@ def run_scenario(spec: dict, out: Path) -> dict:
             # a player's notices, HUD, pie menu or objects once the steps are done (quick_loop's notice:/nonotice:/hud:/
             # menudiff:/objectdiff:)
             code, text = quick_step(check)
-            record["log"].append(f"## after {check}\n{_tail(text, 4)}")
+            record["log"].append(f"## after {check}\n{scrub(_tail(text, 4))}")
             if code != 0:
                 why = next((ln.strip() for ln in reversed(text.splitlines()) if ln.strip()), f"exit {code}")
-                record["failures"].append(f"step {check}: {why[:200]}")
+                record["failures"].append(f"step {check}: {scrub(why)[:200]}")
         elif kind == "assert":
             # assert:<server|client>:<bridge command>:<regex>: one bridge command whose reply must match (a counter, a
             # state). The regex is everything after the third colon. client is the scenario's first watched client;
@@ -1828,7 +2578,7 @@ def run_scenario(spec: dict, out: Path) -> dict:
             else:
                 _, text = python("scripts/bridgectl.py", "--endpoint", check_endpoint(side, endpoints, watched), *command.split())
             found = re.search(pattern, text)
-            record["log"].append(f"## after {check}\n" + (found.group(0) if found else "NO MATCH\n" + _tail(text)))
+            record["log"].append(f"## after {check}\n" + scrub(found.group(0) if found else "NO MATCH\n" + _tail(text)))
             if not found:
                 record["failures"].append(f"assert {side} {command}: no /{pattern}/")
         elif kind == "rose":
@@ -1839,16 +2589,16 @@ def run_scenario(spec: dict, out: Path) -> dict:
             after, text = read_counter(check, endpoints, watched)
             why = rose_failure(key, rose_before.get(check), after)
             record["log"].append(f"## after {check}\n{key}: {rose_before.get(check)} -> {after}"
-                                 + (f"\n{_tail(text)}" if after is None else ""))
+                                 + (f"\n{scrub(_tail(text))}" if after is None else ""))
             if why:
                 record["failures"].append(f"rose {rest.split(':', 1)[0]}: {why}")
         elif kind == "households":
             # households:<household ...> [--pair A+B]: fails where a watched client's funds or relationship differ from
             # the server's (scripts/household_read.py)
             diffs, text = households_check(rest, endpoints, watched)
-            record["log"].append(f"## after {check}\n{text}" + ("\n" + "\n".join(diffs) if diffs else ""))
+            record["log"].append(f"## after {check}\n{scrub(text)}" + ("\n" + scrub("\n".join(diffs)) if diffs else ""))
             if diffs:
-                record["failures"].append("households: " + "; ".join(diffs)[:300])
+                record["failures"].append("households: " + scrub("; ".join(diffs))[:300])
         elif kind == "drivers":
             # drivers[:Sim,Sim]: fails when a Sim has two live drivers of one machine on any game read (the crumpled
             # pose of 2026-10-21, d70d068); scripts/replay_check.py drivers
@@ -1878,7 +2628,7 @@ def run_scenario(spec: dict, out: Path) -> dict:
             record["log"].append(f"## after {check}\nskipped: the scenario passed (captures are evidence for failures)")
         else:
             code, text = quick_step(check)
-            record["log"].append(f"## after {check}\n{_tail(text, 40)}")  # diag: its presenter line sits above the last 12
+            record["log"].append(f"## after {check}\n{scrub(_tail(text, 40))}")  # diag: its presenter line sits above the last 12
             record["images"] += images_in(text)
 
     lap("after")

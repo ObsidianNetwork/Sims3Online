@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """simctl — admin CLI for the SimsOnline dedicated server public protocol.
 
-Defaults to newline-delimited JSON on the public listener (127.0.0.1:34019).
+Defaults to newline-delimited JSON on the public listener (127.0.0.1:34019),
+or line mode when SIMSONLINE_FRONT_DOOR=1. Explicit --wire always wins.
 Stdlib only. JSON mode never sends join_session — the listener only synthesizes a
 LeaveSession (releasing all claims) for a connection's *joined* player, so an
 un-joined admin connection can claim/command and disconnect without side effects.
@@ -802,7 +803,8 @@ def main():
     ap = argparse.ArgumentParser(prog="simctl", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--endpoint", default=PUBLIC_ENDPOINT)
-    ap.add_argument("--wire", choices=("json", "line"), default="json")
+    ap.add_argument("--wire", choices=("json", "line"),
+                    default="line" if os.environ.get("SIMSONLINE_FRONT_DOOR") == "1" else "json")
     ap.add_argument("--admin-endpoint", help="Card 58 loopback admin listener; no public JoinSession")
     ap.add_argument("--player", type=int,
                     help="playerId to act as (required for line/public joins; JSON/admin defaults to 1)")

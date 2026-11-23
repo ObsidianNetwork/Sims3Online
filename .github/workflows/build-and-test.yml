@@ -35,6 +35,9 @@ jobs:
       - name: Build test client
         run: dotnet build SimsOnline.TestClient/SimsOnline.TestClient.csproj
 
+      - name: Build SimsOnline.sln
+        run: dotnet build SimsOnline.sln --configuration Release --nologo
+
       - name: Build test project (pulls in DedicatedServer via ProjectReference)
         run: dotnet build DedicatedServer.Tests/SimsOnline.DedicatedServer.Tests.csproj
 
@@ -193,8 +196,10 @@ jobs:
       - name: Test Rust crates
         run: |
           cargo test --manifest-path rust/sim96_kernel_cleanroom/Cargo.toml
+          cargo test --manifest-path rust/sim96_kernel_cleanroom/Cargo.toml --features nav-planner
           cargo test --manifest-path rust/simlink_bridge/Cargo.toml
           cargo test --manifest-path rust/simlink_headless_server/Cargo.toml
+          cargo test --manifest-path rust/simlink_headless_server/Cargo.toml --no-default-features
 
   simlink-windows:
     # Builds the SimLink sidecar (native x86, CMake + MSVC) with the repo's own build command, then runs the

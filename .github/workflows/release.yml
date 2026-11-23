@@ -9,11 +9,11 @@ permissions:
   contents: read
 
 jobs:
-  build-and-release:
+  build-and-test-dotnet:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
-      contents: write  # only to create the draft release; the token is not kept in the checkout
+      contents: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -40,6 +40,82 @@ jobs:
       - name: Publish DedicatedServer (Linux x64)
         run: dotnet publish DedicatedServer/SimsOnline.DedicatedServer.csproj -c Release -r linux-x64 --self-contained false -o ./dist/DedicatedServer-linux-x64
 
+      - name: Upload .NET dist artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dotnet-dist
+          path: ./dist
+          if-no-files-found: error
+
+  build-rust-win-x64:
+    # simlink_bridge binds Win32 process/shared-memory APIs under #[cfg(windows)],
+    # so the runnable headless server executable must be built on Windows. Clean-room
+    # tests disable `repo-integration` so oracle/local-fixture dev tests stay offline.
+    runs-on: windows-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install Clippy
+        shell: pwsh
+        run: rustup component add clippy
+
+      - name: Clippy clean-room check (simlink_headless_server)
+        shell: pwsh
+        run: cargo clippy --manifest-path rust/simlink_headless_server/Cargo.toml --locked --no-default-features --all-targets -- -D warnings
+
+      - name: Run clean-room Rust unit/protocol tests
+        shell: pwsh
+        run: cargo test --manifest-path rust/simlink_headless_server/Cargo.toml --locked --no-default-features
+
+      - name: Build simlink_headless_server (Windows x64 Release)
+        shell: pwsh
+        run: cargo build --manifest-path rust/simlink_headless_server/Cargo.toml --locked --release --bin simlink_headless_server
+
+      - name: Stage simlink_headless_server (Windows x64)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path ./dist/simlink_headless_server-win-x64 | Out-Null
+          Copy-Item ./rust/simlink_headless_server/target/release/simlink_headless_server.exe ./dist/simlink_headless_server-win-x64/
+          Copy-Item ./rust/simlink_headless_server/README.md ./dist/simlink_headless_server-win-x64/
+          Copy-Item ./rust/simlink_headless_server/SYNC_POLICY.md ./dist/simlink_headless_server-win-x64/
+
+      - name: Upload Rust headless server artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: simlink-headless-server-win-x64
+          path: ./dist/simlink_headless_server-win-x64
+          if-no-files-found: error
+
+  package-and-release:
+    needs: [build-and-test-dotnet, build-rust-win-x64]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write  # only to create the draft release; the token is not kept in the checkout
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Download .NET dist artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dotnet-dist
+          path: ./dist
+
+      - name: Download Rust headless server artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: simlink-headless-server-win-x64
+          path: ./dist/simlink_headless_server-win-x64
+
       - name: Package Release Archives
         # The tag name comes from whoever pushed the tag: pass it as data, never interpolate it into the script.
         env:
@@ -47,7 +123,8 @@ jobs:
         run: |
           mkdir -p ./release-artifacts
           cp LICENSE README.md ./dist/
-          (cd ./dist && zip -qr "../release-artifacts/Sims3Online-win-x64-${RELEASE_TAG}.zip" DedicatedServer-win-x64 SimsOnline.Client-win-x64 LICENSE README.md)
+          (cd ./dist && zip -qr "../release-artifacts/Sims3Online-win-x64-${RELEASE_TAG}.zip" DedicatedServer-win-x64 SimsOnline.Client-win-x64 simlink_headless_server-win-x64 LICENSE README.md)
+          (cd ./dist && zip -qr "../release-artifacts/simlink_headless_server-win-x64-${RELEASE_TAG}.zip" simlink_headless_server-win-x64 LICENSE README.md)
           tar -czvf "./release-artifacts/Sims3Online-linux-x64-${RELEASE_TAG}.tar.gz" -C ./dist DedicatedServer-linux-x64 LICENSE README.md
           (cd ./release-artifacts && sha256sum * > SHA256SUMS.txt)
 

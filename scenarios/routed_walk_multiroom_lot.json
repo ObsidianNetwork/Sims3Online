@@ -1,10 +1,14 @@
 {
   "name": "routed_walk_multiroom_lot",
-  "summary": "BLOCKED: Card 55 needs measured in-memory internal documentation topology, fixed measured start and goal cells, trusted installation, owner-gated gameplay routing, typed portal execution and both-client receipts. The saved library approximation is inferred and is not accepted live input. No runtime executors are registered; the preflight must stop before reset. Home is not a measured library start. E1-E5 selectors request scoped measurements, not successful textual assertions.",
+  "summary": "BLOCKED until G0 pins the measured start and goal selectors and the start file: Card 55 needs measured in-memory library and exterior topology, trusted installation, owner-gated gameplay routing, typed portal execution and both-client receipts. The executors are scripts/card55_executors.py; their preflight stops before the reset while any selector is *_UNAVAILABLE or scenarios/start/<start>.json is missing. Home is not a measured library start. E1-E5 selectors request scoped measurements, not textual assertions.",
   "clients": [
     1,
     2
   ],
+  "lot": "7787005354294925872",
+  "rust": {
+    "follower": "boundary-route"
+  },
   "start": "home",
   "steps": [
     "claim-sim:Jennifer",

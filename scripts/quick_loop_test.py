@@ -20,6 +20,25 @@ import household_read  # noqa: E402
 import quick_loop as ql  # noqa: E402
 
 
+class FrontDoorSpeedTests(unittest.TestCase):
+    def test_line_speed_uses_a_spare_explicit_console_player(self):
+        with mock.patch.dict(os.environ, {"SIMSONLINE_FRONT_DOOR": "1"}), \
+             mock.patch.object(ql, "run", return_value="accepted\n") as run:
+            self.assertEqual(ql.simctl_speed("normal"), "accepted")
+            command = run.call_args.args[0]
+            self.assertEqual(command[command.index("--wire") + 1], "line")
+            self.assertEqual(command[command.index("--player") + 1], "9998")
+            self.assertEqual(command[-2:], ["speed", "normal"])
+
+    def test_legacy_speed_keeps_unjoined_json_default(self):
+        with mock.patch.dict(os.environ, {"SIMSONLINE_FRONT_DOOR": "0"}), \
+             mock.patch.object(ql, "run", return_value="accepted\n") as run:
+            ql.simctl_speed("normal")
+            command = run.call_args.args[0]
+            self.assertNotIn("--wire", command)
+            self.assertNotIn("--player", command)
+
+
 def history(*phases: tuple[str, str]) -> dict:
     return {"startedUtc": phases[0][1] if phases else None, "history": [{"phase": p, "utc": t, "detail": None} for p, t in phases]}
 

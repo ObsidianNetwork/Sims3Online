@@ -21,8 +21,12 @@ public static class LastGoodSave
     public const string Suffix = ".lastgood";
     public const string ManifestFileName = "simsonline-lastgood.txt";
 
-    /// <summary>"…\Name.sims3" → "…\Name.sims3.lastgood".</summary>
-    public static string FolderFor(string saveFolder) => Path.TrimEndingDirectorySeparator(saveFolder) + Suffix;
+    /// <summary>Both "…\Name" and "…\Name.sims3" use "…\Name.sims3.lastgood", the boot recovery identity.</summary>
+    public static string FolderFor(string saveFolder)
+    {
+        string folder = Path.TrimEndingDirectorySeparator(saveFolder);
+        return (folder.EndsWith(".sims3", StringComparison.OrdinalIgnoreCase) ? folder : folder + ".sims3") + Suffix;
+    }
 
     /// <summary>
     /// Why these files are not a whole TS3 save, or null when they are: an .nhd is present, and every DBPF file is

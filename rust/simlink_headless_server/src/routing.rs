@@ -10,6 +10,16 @@ pub struct RoutedEvent {
     pub owner: Option<i32>,
     pub requester: Option<ConnId>,
 }
+// Internal control marker. Stream orders it after old presentation drain; serve consumes
+// it before recipient selection, public sequence allocation, replay-ring append or encoding.
+pub(crate) const WORLD_RESET: &str = "__presentation_world_reset";
+pub(crate) fn world_reset(generation:u64) -> RoutedEvent {
+    RoutedEvent {event: Event {seq:0,tick:0,corr:0,kind:WORLD_RESET.into(),fields:vec![generation.to_string()]},owner:None,requester:None}
+}
+impl RoutedEvent {
+    /// Internal actor control, never a public protocol event or subscription.
+    pub fn is_presentation_world_reset(&self)->bool {self.event.kind==WORLD_RESET}
+}
 /// ClientListenerServer.ClientConnection.IsBroadcastEvent, exactly its eight rows.
 pub fn is_broadcast_event(kind: &str) -> bool {
     matches!(kind, "SimClaimed" | "SimReleased" | "SimAutonomyChanged" | "SessionJoined"

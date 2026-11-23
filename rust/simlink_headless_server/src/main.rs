@@ -63,6 +63,12 @@ fn ts3w_pid() -> io::Result<u32> {
 
 fn run() -> io::Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if let Some(path) = value(&args, "--check-sync-policy")? {
+        return match simlink_headless_server::sync_policy::check(std::path::Path::new(path)) {
+            Ok(sha) => { println!("{}", serde_json::json!({"ok":true,"sha256":sha,"interface":"split_before(record)->bool"})); Ok(()) },
+            Err(error) => { println!("{}", serde_json::json!({"ok":false,"error":error})); Err(io::Error::other(error)) },
+        };
+    }
     if args.iter().any(|arg| arg == "--codec-stdio") { return codec_stdio(); }
     if args.iter().any(|arg| arg == "--trace-stdio") { return simlink_headless_server::trace::stdio(); }
     if let Some(dir) = value(&args, "--scorecard-dir")? {

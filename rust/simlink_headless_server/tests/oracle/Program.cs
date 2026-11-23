@@ -136,9 +136,8 @@ internal static class Program
         {
             case "card59_folder_select":
             {
-                // Section B adds the extensionless SAVE_GAME candidate to the
-                // controller's stable newest-NHD ordering. This is a contract
-                // adapter: HeadlessSims3Host's private helper is suffix-only.
+                // Section B checks both folder forms with the controller's
+                // stable newest-NHD ordering: roots first, then suffix-first ties.
                 string save = Text(row, "save");
                 string suffix = save.EndsWith(".sims3", StringComparison.OrdinalIgnoreCase) ? save : save + ".sims3";
                 string? selected = row.GetProperty("roots").EnumerateArray().SelectMany(root =>

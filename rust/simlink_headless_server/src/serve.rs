@@ -104,6 +104,8 @@ impl RunningServer {
     ) -> io::Result<Self>
     where F: FnOnce() -> io::Result<D> + Send + 'static, C: Fn() -> u64 + Send + 'static {
         if limit == 0 { return Err(io::Error::new(io::ErrorKind::InvalidInput, "connections must be positive")); }
+        // Initial policy validation completes before attaching the native driver.
+        let policy = crate::sync_policy::Host::start(options.sync_policy.clone())?;
         let admin_addr = admin.as_ref().map(TcpListener::local_addr).transpose()?;
         if admin_addr.is_some_and(|addr| !addr.ip().is_loopback()) {
             return Err(io::Error::new(io::ErrorKind::PermissionDenied, "admin listener must bind loopback"));
@@ -138,7 +140,7 @@ impl RunningServer {
                 return Err(error);
             }
             let _ = ready_tx.send(Ok(()));
-            run_actor(&mut poll, &mut listener, admin.as_mut(), &stop, &mut driver, limit, (options, &clock))
+            run_actor(&mut poll, &mut listener, admin.as_mut(), &stop, &mut driver, limit, (options, &clock, policy))
         });
         match ready_rx.recv().map_err(io::Error::other)? {
             Ok(()) => Ok(Self { addr, admin_addr, shutdown, thread: Some(thread) }),
@@ -271,9 +273,9 @@ impl Peer {
 
 fn run_actor<D: GameDriver>(
     poll: &mut Poll, listener: &mut mio::net::TcpListener, mut admin_listener: Option<&mut mio::net::TcpListener>,
-    stop: &AtomicBool, driver: &mut D, limit: usize, config: (StreamOptions, &dyn Fn() -> u64),
+    stop: &AtomicBool, driver: &mut D, limit: usize, config: (StreamOptions, &dyn Fn() -> u64, crate::sync_policy::Host),
 ) -> io::Result<()> {
-    let (options, clock) = config;
+    let (options, clock, mut policy) = config;
     let mut events = Events::with_capacity(256);
     let mut peers = HashMap::<Token, Peer>::new();
     let mut server = Server::new(fresh_epoch());
@@ -281,7 +283,11 @@ fn run_actor<D: GameDriver>(
     let mut stream = Stream::new(options);
     let mut next_pump = Instant::now();
     let mut report_index = 0;
+    let mut stream_report_index = 0;
     let mut presentation_gap_max = 0u64;
+    let mut previous_baseline_pending = false;
+    let mut policy_world_generation=driver.presentation_world_generation();
+    let mut pending_policy_world_reset=false;
     let mut presentation_gap = crate::stream::JoinGap::default();
     let mut exit_deadline: Option<Instant> = None;
     while !stop.load(Ordering::Acquire)
@@ -342,11 +348,12 @@ fn run_actor<D: GameDriver>(
                 token => {
                     let diagnostics = front_door_state(&server, &peers, &stream, presentation_gap_max, driver);
                     let presentation = presentation_state(&server, &peers);
+                    let sync_policy = policy.report();
                     if let Some(peer) = peers.get_mut(&token) {
                         if event.is_readable() && !peer.close && !peer.has_output()
                             && !driver.baseline_pending(ConnId(token.0 as u64))
                             && (exit_deadline.is_none() || peer.admin) {
-                            let context = ReadContext { stream: &mut stream, stop, diagnostics: &diagnostics, presentation: &presentation,
+                            let context = ReadContext { stream: &mut stream, stop, diagnostics: &diagnostics, presentation: &presentation, sync_policy: &sync_policy,
                                 now_ms: clock(), exit_deadline };
                             if let Err(error) = read_peer(peer, ConnId(token.0 as u64), &mut server, driver, context) {
                                 eprintln!("client {}: {error}", token.0);
@@ -361,11 +368,12 @@ fn run_actor<D: GameDriver>(
             next_pump = Instant::now() + Duration::from_millis(10);
             let diagnostics = front_door_state(&server, &peers, &stream, presentation_gap_max, driver);
             let presentation = presentation_state(&server, &peers);
+            let sync_policy = policy.report();
             for (token, peer) in &mut peers {
                 let id = ConnId(token.0 as u64);
                 if peer.deferred_read && !peer.close && !peer.has_output() && !driver.baseline_pending(id) {
                     peer.deferred_read = false;
-                    let context = ReadContext { stream: &mut stream, stop, diagnostics: &diagnostics,
+                    let context = ReadContext { stream: &mut stream, stop, diagnostics: &diagnostics, sync_policy: &sync_policy,
                         presentation: &presentation, now_ms: clock(), exit_deadline };
                     if let Err(error) = read_peer(peer, id, &mut server, driver, context) {
                         eprintln!("client {}: {error}", token.0);
@@ -374,17 +382,44 @@ fn run_actor<D: GameDriver>(
                 }
             }
             let joining = stream.joining();
+            let players = server.joined_connections().into_iter().filter(|id|
+                peers.get(&Token(id.0 as usize)).is_some_and(|peer| !peer.admin && !peer.relay && peer.welcomed && !peer.close))
+                .filter_map(|id| server.connection(id)?.player.map(|player| player.to_string())).collect();
+            let generation=driver.presentation_world_generation();
+            if generation!=policy_world_generation {pending_policy_world_reset=true;policy_world_generation=generation;}
+            let joined=server.joined_connections();
+            policy.retain_connections(&joined.iter().map(|id|id.0).collect());
+            let baseline_pending=joined.iter().any(|id|driver.baseline_pending(*id));
+            policy.boundary_pinned(stream.last_tick.max(0) as u64, players,
+                stream.policy_transaction_pending() || baseline_pending || previous_baseline_pending || pending_policy_world_reset);
+            previous_baseline_pending=baseline_pending;
             let pump_start_ms = clock();
-            let routed_events = match stream.pump(pump_start_ms, &mut server, driver) {
+            let mut routed_events = match stream.pump(pump_start_ms, &mut server, driver) {
                 Ok(events) => events,
                 Err(error) => {
                     eprintln!("serve_report|bridge_failure|{error}");
+                    if stream.world_cut_failed() || stream.participant_hold_failed() || stream.ring_transport_failed() {return Err(io::Error::other(error.0));}
                     if error.0.contains("process_exited") {
                         exit_deadline = Some(Instant::now() + PEER_TIMEOUT);
                         stream.terminal_events(driver, &error)
                     } else { stream.take_events(driver) }
                 }
             };
+            if exit_deadline.is_none() {
+                let joined_after = server.joined_connections();
+                let parity_paused = joined_after.is_empty()
+                    || joined_after.iter().any(|id| driver.baseline_pending(*id));
+                match driver.poll_claimed_parity(pump_start_ms, stream.options.base_interval_ms, parity_paused) {
+                    Ok(events) => routed_events.extend(events),
+                    Err(error) => {
+                        eprintln!("serve_report|bridge_failure|{error}");
+                        if error.0.contains("process_exited") {
+                            exit_deadline = Some(Instant::now() + PEER_TIMEOUT);
+                            routed_events.extend(driver.terminal_events(&error));
+                        }
+                    }
+                }
+            }
             // Card 10 measures stalled pump windows, not time between sparse
             // recorder events. Empty pumps still advance the observation.
             let pump_end_ms = clock();
@@ -396,17 +431,61 @@ fn run_actor<D: GameDriver>(
                     pump_end_ms.saturating_sub(pump_start_ms), server.joined_connections().len());
             }
             presentation_gap_max = presentation_gap.max_during_join;
+            if routed_events.iter().any(|event| matches!(event.event.kind.as_str(), "FullSnapshot" | "NavigationEpochChanged")) {
+                stream.policy_protected = true;
+            }
             for mut routed in routed_events {
+                if routed.is_presentation_world_reset() {
+                    policy.reset_world_metadata();
+                    let generation=routed.event.fields.first().and_then(|s|s.parse().ok()).unwrap_or(driver.presentation_world_generation());
+                    driver.presentation_world_cut_complete(generation);
+                    pending_policy_world_reset=false;
+                    continue;
+                }
+                if !stream.model_event_current(&routed, &mut server, driver)
+                    || !stream.state_event_current(&routed, &server, driver)
+                    || !stream.participant_event_current(&routed, &server, driver) { continue; }
+                let is_participant = stream.is_participant_event(&routed);
+                let participant_receipt = is_participant.then(|| routed.clone());
+                if is_participant {
+                    routed.event.fields.pop();
+                    routed.event.kind = stream.participant_public_kind(&routed).expect("private participant kind").into();
+                }
+                let is_model = stream.is_model_event(&routed);
+                let model_receipt = is_model.then(|| routed.clone());
+                if is_model {
+                    routed.event.fields.pop();
+                    routed.event.kind = "SnapshotDelta".into();
+                }
+                let is_visible_state = stream.is_visible_state_event(&routed);
+                let state_receipt = is_visible_state.then(|| routed.clone());
+                if is_visible_state {
+                    routed.event.fields.pop(); // private delivery token never enters public protocol
+                    routed.event.kind = "SimStateChanged".into();
+                }
+                let mut state_delivery_ok = true;
+                let mut state_recipients = 0;
                 let mut world_data = if routed.event.kind == "WorldFile" { routed.event.fields.pop() } else { None };
-                for id in crate::routing::recipients(&server, &routed) {
-                    if matches!(routed.event.kind.as_str(), "SnapshotDelta" | "SimAnimation") && driver.baseline_pending(id) {
+                // A private state lease is specific to one validated recipient.
+                // Generic/public SimStateChanged routing remains broadcast.
+                let recipients = if is_visible_state || is_model || is_participant { routed.requester.into_iter().collect() }
+                    else { crate::routing::recipients(&server, &routed) };
+                for id in recipients {
+                    if (is_participant || matches!(routed.event.kind.as_str(), "SnapshotDelta" | "SimAnimation" | "SimStateChanged" | "SimMotiveChanged" | "SimDetailsChanged" | "HouseholdFundsChanged")) && driver.baseline_pending(id) {
+                        state_delivery_ok = false;
                         continue;
                     }
+                    let packets = match (server.connection(id).and_then(|connection| connection.player), peers.get(&Token(id.0 as usize))) {
+                        (Some(player), Some(peer)) if !peer.admin && !peer.relay && peer.welcomed && !peer.close =>
+                            policy.packets_for(id.0, player, &routed.event, routed.requester.is_some() || stream.policy_protected || stream.history_pending()),
+                        _ => vec![routed.event.clone()],
+                    };
+                    for mut event in packets {
                     let Some(seq) = server.next_event_seq(id) else {
+                        state_delivery_ok = false;
                         if let Some(peer) = peers.get_mut(&Token(id.0 as usize)) { peer.close = true; }
                         continue;
                     };
-                    let mut event = routed.event.clone();
                     event.seq = seq;
                     let epoch = server.epoch;
                     let conn = server.connection_mut(id).expect("event recipient");
@@ -419,12 +498,13 @@ fn run_actor<D: GameDriver>(
                     let lines = if world_bulk.is_some() { vec![w::encode_event(&event).map_err(io::Error::other)?] }
                         else { encode_event_lines(&event, &mut conn.next_bulk)? };
                     conn.ring.append(epoch, seq, lines[0].clone(), event_names_bulk(&lines[0]));
-                    let Some(peer) = peers.get_mut(&Token(id.0 as usize)).filter(|p| p.welcomed && !p.close) else { continue; };
+                    let Some(peer) = peers.get_mut(&Token(id.0 as usize)).filter(|p| p.welcomed && !p.close) else { state_delivery_ok = false; continue; };
                     peer.last_seq = seq;
                     if event.kind == "SimAnimation" {
                         peer.presentation_attempt += 1;
                     }
                     if peer.output.len() - peer.written + peer.pending_bytes > 16 * crate::messages::PUBLIC_LINE_MAX_BYTES {
+                        state_delivery_ok = false;
                         peer.drops += 1;
                         peer.close = true;
                         eprintln!("serve_report|drop|remote={}|reason=outbound_queue_full", peer.remote);
@@ -439,6 +519,7 @@ fn run_actor<D: GameDriver>(
                     } else {
                         for line in lines { peer.queue(line.as_bytes()); }
                     }
+                    state_recipients += 1;
                     if event.kind == "CommandRejected" && driver.baseline_failed(id) { peer.close = true; }
                     if event.kind == "SimAnimation" {
                         let gap = peer.presentation_attempt - peer.presentation_last_queued;
@@ -459,6 +540,16 @@ fn run_actor<D: GameDriver>(
                     }
                 }
             }
+                    if is_visible_state {
+                        stream.state_event_delivered(state_receipt.as_ref().expect("private state receipt"), state_delivery_ok && state_recipients > 0, &server, driver);
+                    }
+                    if is_model {
+                        stream.model_event_delivered(model_receipt.as_ref().expect("private model receipt"), state_delivery_ok && state_recipients > 0, &mut server, driver);
+                    }
+                    if is_participant {
+                        stream.participant_event_delivered(participant_receipt.as_ref().expect("private participant receipt"), state_delivery_ok && state_recipients > 0, &server, driver);
+                    }
+                    }
             if exit_deadline.is_some() {
                 // Keep writable readiness alive until every queued refusal has
                 // reached its socket; do not call the dead bridge again.
@@ -469,6 +560,8 @@ fn run_actor<D: GameDriver>(
             }
             for line in stream.ladder.report.iter().skip(report_index) { eprintln!("serve_report|{line}"); }
             report_index = stream.ladder.report.len();
+            for line in stream.report.iter().skip(stream_report_index) { eprintln!("serve_report|{line}"); }
+            stream_report_index = stream.report.len();
             if exit_deadline.is_none() {
                 for (id, player, reason) in server.expired_sessions(clock()) {
                     driver.release_player(player);
@@ -522,7 +615,7 @@ fn run_actor<D: GameDriver>(
         }
     }
     eprintln!("serve_report|QUIT|{}", front_door_state(&server, &peers, &stream, presentation_gap_max, driver).replace('\n', "|"));
-    for line in &stream.report { eprintln!("serve_report|{line}"); }
+    for line in stream.report.iter().skip(stream_report_index) { eprintln!("serve_report|{line}"); }
     for peer in peers.values() { let _ = peer.socket.shutdown(Shutdown::Both); }
     Ok(())
 }
@@ -532,12 +625,13 @@ struct ReadContext<'a> {
     stop: &'a AtomicBool,
     diagnostics: &'a str,
     presentation: &'a str,
+    sync_policy: &'a str,
     now_ms: u64,
     exit_deadline: Option<Instant>,
 }
 fn read_peer<D: GameDriver>(peer: &mut Peer, id: ConnId, server: &mut Server, driver: &mut D,
     context: ReadContext<'_>) -> io::Result<()> {
-        let ReadContext { stream, stop, diagnostics, presentation, now_ms, exit_deadline } = context;
+        let ReadContext { stream, stop, diagnostics, presentation, sync_policy, now_ms, exit_deadline } = context;
     let bridge_exited = exit_deadline.is_some();
     let mut chunk = [0u8; 8192];
     loop {
@@ -616,6 +710,7 @@ fn read_peer<D: GameDriver>(peer: &mut Peer, id: ConnId, server: &mut Server, dr
                         } else { match admin::parse_request(&input) {
                             Ok(request) => match request.name.as_str() {
                                 "FRONT_DOOR_STATE" => admin::report(diagnostics),
+                                "SYNC_POLICY_STATE" => admin::report(sync_policy),
                                 "PRESENTATION_SENT" => admin::report(presentation),
                                 "EVENTS_DROPPED" => admin::report(&driver.event_drop_state()),
                                 "QUIT" => {
@@ -623,7 +718,7 @@ fn read_peer<D: GameDriver>(peer: &mut Peer, id: ConnId, server: &mut Server, dr
                                     admin::report("QUIT")
                                 }
                                 _ if bridge_exited => admin::error("process_exited"),
-                                _ => stream.admin_reply(&request)
+                                _ => stream.managed_admin_reply(&request).or_else(||stream.admin_reply(&request))
                                     .unwrap_or_else(|| driver.admin_request(&request).unwrap_or_else(admin::error)),
                             },
                             Err(error) => admin::error(error),
@@ -859,6 +954,8 @@ pub fn event_names_bulk(line: &str) -> bool {
     let field = match fields.get(4).copied() {
         Some("FullSnapshot" | "SnapshotDelta") => fields.get(5),
         Some("WorldFile") => fields.get(10),
+        Some("SimDescriptionData") => return fields.get(6..9).is_some_and(|fields|
+            fields.iter().any(|field| crate::messages::dec_bulk_ref(field).is_some())),
         _ => None,
     };
     field.is_some_and(|field| crate::messages::dec_bulk_ref(field).is_some())
@@ -868,6 +965,33 @@ pub fn event_names_bulk(line: &str) -> bool {
 pub fn encode_event_lines(event: &crate::messages::Event, next_bulk: &mut u64) -> io::Result<Vec<String>> {
     let mut event = event.clone();
     let mut bulk = Vec::new();
+    // C# PublicLineCodecV1 always sends byte[] as raw bulks. Text encoding would
+    // corrupt non-UTF8 data; inline hex can also be mistaken for a b123 reference.
+    if event.kind == "SimDescriptionData" {
+        if event.fields.len() != 4 || event.fields[1..].iter().map(String::len).sum::<usize>()
+            > 2 * crate::messages::PUBLIC_DESCRIPTION_MAX_RAW_BYTES {
+            return Err(io::Error::other("invalid description fields/size"));
+        }
+        let arrays: Vec<_> = event.fields[1..].iter().map(|field|
+            crate::messages::hex_decode_bytes(field).map_err(io::Error::other)).collect::<io::Result<_>>()?;
+        let mut next = *next_bulk;
+        for (index, bytes) in arrays.iter().enumerate() {
+            let id = next;
+            next = id.checked_add(1).ok_or_else(|| io::Error::other("bulk id exhausted"))?;
+            let chunks: Vec<_> = if bytes.is_empty() { vec![&[][..]] }
+                else { bytes.chunks(crate::messages::PUBLIC_BULK_CHUNK_RAW_BYTES).collect() };
+            for (part, data) in chunks.iter().enumerate() {
+                let chunk = crate::messages::BulkChunk { bulk_id: id, index: part as u64,
+                    count: chunks.len() as u64, b64: w::b64_encode(data) };
+                bulk.push(w::encode_bulk(&chunk).map_err(io::Error::other)?);
+            }
+            event.fields[index + 1] = crate::messages::enc_bulk_ref(id);
+        }
+        let mut lines = vec![w::encode_event(&event).map_err(io::Error::other)?];
+        lines.extend(bulk);
+        *next_bulk = next;
+        return Ok(lines);
+    }
     // The introducing EV precedes its chunks (card 57 F.2).
     let world = event.kind == "WorldFile";
     let body_index = if world { 5 } else { 0 };
@@ -907,7 +1031,12 @@ fn front_door_state(server: &Server, peers: &HashMap<Token, Peer>, stream: &Stre
     let routing = driver.routing_state().map(|state| format!("|{state}")).unwrap_or_default();
     let epoch_dump = if stream.epoch_dump_limit_hits == 0 { String::new() }
         else { format!("|navigation_epoch_dump_limit_hits={}",stream.epoch_dump_limit_hits) };
-    rows.push(format!("totals|joins_completed={}|tick_drops_during_join={tick_drops}|outbound_drops={drops}|presentation_sent_gap_max_during_join={presentation_gap_max}|{}{routing}{epoch_dump}",
+    let history = if stream.history_failures == 0 && !stream.history_pending() { String::new() }
+        else { format!("|presentation_history_pending={}|presentation_history_failures={}", u8::from(stream.history_pending()), stream.history_failures) };
+    let phases = format!("|presentation_join_history_pending={}|presentation_fresh_history_pending={}",
+        stream.join_history_pending(), stream.fresh_history_pending());
+    rows.push(stream.state_report());
+    rows.push(format!("totals|joins_completed={}|tick_drops_during_join={tick_drops}|outbound_drops={drops}|presentation_sent_gap_max_during_join={presentation_gap_max}|{}{routing}{epoch_dump}{phases}{history}",
         server.joins_completed, stream.ladder.status()));
     rows.join("\n")
 }
@@ -931,6 +1060,23 @@ mod tests {
     use crate::transport::FakeDriver;
 
     #[test]
+    fn pending_history_and_cumulative_failure_remain_visible_after_recovery() {
+        let server = Server::new(7);
+        let driver = FakeDriver::new();
+        let mut stream = Stream::new(StreamOptions::default());
+        let peers = HashMap::new();
+        let baseline = front_door_state(&server, &peers, &stream, 0, &driver);
+        assert!(!baseline.contains("presentation_history_pending"));
+        stream.joined(ConnId(1));
+        stream.history_failures = 1;
+        assert!(front_door_state(&server, &peers, &stream, 0, &driver)
+            .ends_with("|presentation_history_pending=1|presentation_history_failures=1"));
+        stream.left(ConnId(1));
+        assert!(front_door_state(&server, &peers, &stream, 0, &driver)
+            .ends_with("|presentation_history_pending=0|presentation_history_failures=1"));
+    }
+
+    #[test]
     fn epoch_dump_limit_counter_is_visible_in_existing_diagnostics_only_after_failure() {
         let server = Server::new(7);
         let driver = FakeDriver::new();
@@ -939,8 +1085,10 @@ mod tests {
         let baseline = front_door_state(&server,&peers,&stream,0,&driver);
         assert!(!baseline.contains("navigation_epoch_dump_limit_hits"));
         stream.epoch_dump_limit_hits = 2;
-        assert_eq!(front_door_state(&server,&peers,&stream,0,&driver),
-            format!("{baseline}|navigation_epoch_dump_limit_hits=2"));
+        let actual = front_door_state(&server,&peers,&stream,0,&driver);
+        let counter = "navigation_epoch_dump_limit_hits=2";
+        assert_eq!(actual.split('|').filter(|field| field.starts_with("navigation_epoch_dump_limit_hits=")).collect::<Vec<_>>(), [counter]);
+        assert_eq!(actual.split('|').filter(|field| *field != counter).collect::<Vec<_>>().join("|"), baseline);
     }
 
     #[test]

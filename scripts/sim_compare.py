@@ -14,15 +14,22 @@ named after the server's posture; that counts as the same.
 --client 1|2|3|HOST:PORT picks the client (default client 1, or SIMSONLINE_COMPARE_CLIENT). --clients 1,2,3 compares
 several in one call: the server is read once, each client gets its own block ("### client N"), and a last line gives
 each client's visible mismatch count. Exit 3 when any client has a visible mismatch.
+
+Card 55 E5 settled-bracket millimetre mode (--mm / --settle-bracket / --e5 / --settled-mm / --landing):
+reads server_before_mm, concurrent client 1 & 2 position_mm + honest ClientBoundaryRoute WalkPhase, and server_after_mm
+against 100 mm (0.10 m) tolerance, keeping raw coordinates in RAM and reporting only unsigned integer errors_mm and verdicts.
 """
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
+import json
 import math
 import re
 import subprocess
 import sys
 from pathlib import Path
+from typing import Callable
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -31,8 +38,15 @@ from local_endpoints import SERVER_BRIDGECTL  # noqa: E402
 
 ENDPOINTS = {"server": SERVER_BRIDGECTL, "client": compare_client.endpoint()}  # --client 2: player 2's game
 PROBE = ROOT / ".omo" / "run" / "act" / "SimCompareProbe.cs"
+SETTLED_PHASES = ("Halted", "SeatingSettled")
+LANDING_TOLERANCE_MM = 100
+SETTLED_TOLERANCE_M = 0.10
+DEFAULT_SETTLED_TICKS = 1
+DEFAULT_SETTLED_SPREAD_MM = 0
+IGNORE_FIELDS = ("error", "posmm", "simid")
 
 TEMPLATE = r'''using System;
+using System.Globalization;
 using System.Text;
 using Sims3.Gameplay.Abstracts;
 using Sims3.Gameplay.ActorSystems;
@@ -55,6 +69,11 @@ namespace SimsOnline.Scratch
         private static string F(float v)
         {
             return v.ToString("F2");
+        }
+
+        private static int Mm(float p)
+        {
+            return (int)Math.Round(p * 1000.0);
         }
 
         private static string Held(Sim sim, Slot slot)
@@ -100,6 +119,9 @@ namespace SimsOnline.Scratch
                     string n = sim.FirstName;
                     Vector3 p = sim.Position;
                     Vector3 fwd = sim.ForwardVector;
+                    int xMm = (int)Math.Round(p.x * 1000.0);
+                    int yMm = (int)Math.Round(p.y * 1000.0);
+                    int zMm = (int)Math.Round(p.z * 1000.0);
                     string posture = sim.Posture == null ? "-" : sim.Posture.GetType().Name;
                     try
                     {
@@ -113,7 +135,9 @@ namespace SimsOnline.Scratch
                     }
 
                     InteractionInstance running = sim.InteractionQueue == null ? null : sim.InteractionQueue.GetCurrentInteraction();
+                    sb.Append("\nsimid|").Append(n).Append("|").Append(sim.ObjectId.Value.ToString(CultureInfo.InvariantCulture));
                     sb.Append("\npos|").Append(n).Append("|").Append(F(p.x)).Append(",").Append(F(p.y)).Append(",").Append(F(p.z));
+                    sb.Append("\nposmm|").Append(n).Append("|").Append(xMm.ToString(CultureInfo.InvariantCulture)).Append(",").Append(yMm.ToString(CultureInfo.InvariantCulture)).Append(",").Append(zMm.ToString(CultureInfo.InvariantCulture));
                     sb.Append("\nfacing|").Append(n).Append("|").Append(F(fwd.x)).Append(",").Append(F(fwd.z));
                     sb.Append("\nposture|").Append(n).Append("|").Append(posture);
                     sb.Append("\nslotParent|").Append(n).Append("|").Append(Slots.GetParentId(sim.ObjectId).IsValid ? "yes" : "-");
@@ -171,13 +195,7 @@ namespace SimsOnline.Scratch
 '''
 
 
-def run_side(endpoint: str, probe: Path = PROBE) -> dict[tuple[str, str], list[str]]:
-    out = subprocess.run([sys.executable, "scripts/bridgectl.py", "--endpoint", endpoint, "probe", str(probe.relative_to(ROOT))],
-                         cwd=ROOT, capture_output=True, text=True, timeout=240).stdout
-    if "-- DIAG_RUN --" not in out:
-        errors = [ln.strip() for ln in out.splitlines() if "error CS" in ln or "failed" in ln]
-        return {("-", "error"): errors or [out.strip()[-400:]]}
-    body = out.split("-- DIAG_RUN --", 1)[-1]
+def _parse_probe_lines(body: str) -> dict[tuple[str, str], list[str]]:
     fields: dict[tuple[str, str], list[str]] = {}
     for line in body.splitlines():
         m = re.match(r"\s*([\w:.]+)\|([^|]*)\|(.*)$", line)
@@ -186,6 +204,468 @@ def run_side(endpoint: str, probe: Path = PROBE) -> dict[tuple[str, str], list[s
         elif "err" in line and "=" in line:
             fields.setdefault(("-", "error"), []).append(line.strip())
     return fields
+
+
+def write_probe_source(sims: list[str], *, props: bool = False, moodlets: bool = False, probe: Path = PROBE) -> Path:
+    import probe_source
+    source = (TEMPLATE.replace("__NAMES__", ",".join(sims))
+              .replace("__PROPS__", "true" if props else "false")
+              .replace("__MOODLETS__", "true" if moodlets else "false"))
+    return probe_source.write(probe, source)
+
+
+def run_side(endpoint: str, probe: Path = PROBE) -> dict[tuple[str, str], list[str]]:
+    out = subprocess.run([sys.executable, "scripts/bridgectl.py", "--endpoint", endpoint, "probe", str(probe.relative_to(ROOT))],
+                         cwd=ROOT, capture_output=True, text=True, timeout=240).stdout
+    if "-- DIAG_RUN --" not in out:
+        errors = [ln.strip() for ln in out.splitlines() if "error CS" in ln or "failed" in ln]
+        return {("-", "error"): errors or [out.strip()[-400:]]}
+    body = out.split("-- DIAG_RUN --", 1)[-1]
+    return _parse_probe_lines(body)
+
+
+def run_side_in_memory(endpoint: str, probe: Path = PROBE, timeout: float = 30.0) -> dict[tuple[str, str], list[str]]:
+    """Run a compiled probe over loopback without printing or journaling raw geometry to disk."""
+    import bridgectl
+    import card55_live as live
+    import os
+    dll = bridgectl.cached_probe(str(probe))
+    type_name = bridgectl.derive_type_name(str(probe)) or "SimsOnline.Scratch.SimCompareProbe"
+    admin = live.Admin(endpoint, timeout=timeout)
+    previous = os.environ.get("SIMSONLINE_BRIDGE_JOURNAL")
+    os.environ["SIMSONLINE_BRIDGE_JOURNAL"] = "0"
+    try:
+        with bridgectl.connect(endpoint, timeout) as sock, bridgectl.blob_lock(sock):
+            blob = Path(dll).read_bytes()
+            hexed = blob.hex().upper()
+            chunks = [hexed[i:i + bridgectl.BLOB_CHUNK_HEX] for i in range(0, len(hexed), bridgectl.BLOB_CHUNK_HEX)] or [""]
+            blob_id = "cmp" + Path(dll).stem[-8:]
+            for idx, chunk in enumerate(chunks):
+                admin.request(f"DIAG_BLOB {blob_id} {idx} {len(chunks)} {chunk}")
+            report = admin.request(f"DIAG_RUN {bridgectl.hexenc(type_name)}")
+    finally:
+        if previous is None:
+            os.environ.pop("SIMSONLINE_BRIDGE_JOURNAL", None)
+        else:
+            os.environ["SIMSONLINE_BRIDGE_JOURNAL"] = previous
+    _, sep, run = report.partition("run=")
+    body = run if sep else report
+    fields = _parse_probe_lines(body)
+    if "ok=false" in body and ("-", "error") not in fields:
+        fields[("-", "error")] = ["probe returned ok=false"]
+    return fields
+
+
+def _validate_xyz_mm(value) -> list[int]:
+    if not isinstance(value, list) or len(value) != 3 or any(
+            type(v) is not int or not -(1 << 31) <= v < (1 << 31) for v in value):
+        raise ValueError("invalid millimetre sample")
+    return value
+
+
+def read_mm(endpoint: str, sim: str, reader: Callable[[str], dict] | None = None,
+            *, probe: Path | None = None, expected_actor: int | None = None,
+            require_actor: bool = False) -> list[int]:
+    """One game's [x, y, z] of the Sim in whole millimetres (the probe's posmm field), kept in memory."""
+    if reader is None:
+        compiled_probe = probe or write_probe_source([sim])
+        side = run_side(endpoint, compiled_probe)
+    else:
+        side = reader(endpoint)
+    return parse_sim_mm(side, sim, expected_actor=expected_actor, require_actor=require_actor)["position_mm"]
+
+
+def parse_sim_mm(side: dict[tuple[str, str], list[str]], sim: str, *, expected_actor: int | None = None,
+                 require_actor: bool = False) -> dict:
+    """Extract verified integer-mm position [x_mm, y_mm, z_mm] and actor ID for sim; fail closed on missing/error."""
+    if not isinstance(side, dict):
+        raise ValueError("missing probe reading")
+    if side.get(("-", "error")):
+        raise ValueError("probe error")
+    for (name, field), values in side.items():
+        if field == "missing" and name.lower() == sim.lower() and values:
+            raise ValueError(f"missing Sim {sim}")
+    rows = [v for (name, field), v in side.items() if field == "posmm" and name.lower() == sim.lower()]
+    if len(rows) != 1 or len(rows[0]) != 1:
+        raise ValueError(f"no millimetre position for {sim}")
+    raw = rows[0][0]
+    if isinstance(raw, list):
+        xyz = _validate_xyz_mm(raw)
+    elif isinstance(raw, str) and re.fullmatch(r"-?[0-9]+,-?[0-9]+,-?[0-9]+", raw):
+        xyz = _validate_xyz_mm([int(v) for v in raw.split(",")])
+    else:
+        raise ValueError(f"invalid millimetre position for {sim}")
+    actor_rows = [v for (name, field), v in side.items() if field == "simid" and name.lower() == sim.lower()]
+    actor_id = None
+    if actor_rows:
+        if len(actor_rows) != 1 or len(actor_rows[0]) != 1 or not re.fullmatch(r"[0-9]+", str(actor_rows[0][0])):
+            raise ValueError(f"invalid actor id for {sim}")
+        actor_id = int(actor_rows[0][0])
+        if actor_id <= 0 or actor_id >= (1 << 64):
+            raise ValueError(f"out-of-range actor id for {sim}")
+    elif require_actor or expected_actor is not None:
+        raise ValueError(f"missing actor id for {sim}")
+    if expected_actor is not None:
+        if type(expected_actor) is not int or expected_actor <= 0 or expected_actor >= (1 << 64):
+            raise ValueError("invalid expected actor")
+        if actor_id != expected_actor:
+            raise ValueError("actor id mismatch")
+    return {"position_mm": xyz, "actor": actor_id}
+
+
+def read_client_walk_phase(endpoint: str, *, corr: int | None = None, actor: int | None = None,
+                           epoch: int | None = None, nav_epoch: int | None = None,
+                           admin_factory=None, page_reader=None) -> str:
+    """Read honest ClientBoundaryRoute WalkPhase from client loopback admin.
+
+    Requires authoritative (nav_epoch, corr, actor) receipt attribution.
+    NEVER accepts an unkeyed or sole fallback receipt when nav_epoch, corr, or actor is missing/non-positive,
+    and NEVER fabricates 'Halted' or 'SeatingSettled' from an empty client InteractionQueue or zero velocity.
+    """
+    import card55_live as live
+    import routing_collectors as pages
+    effective_epoch = nav_epoch if nav_epoch is not None else epoch
+    if (type(effective_epoch) is not int or not 1 <= effective_epoch < (1 << 64)
+            or type(corr) is not int or not 1 <= corr < (1 << 64)
+            or type(actor) is not int or not 1 <= actor < (1 << 64)):
+        return "unattributed"
+    try:
+        if page_reader is not None:
+            request_fn = page_reader(endpoint)
+        else:
+            admin = (admin_factory or live.Admin)(endpoint)
+            request_fn = admin.plan_page(corr, actor, client=True, progress=True)
+        receipt = pages.collect_pages(request_fn, pages.CLIENT, corr, actor, daemon_epoch=effective_epoch)
+        if (receipt.get("epoch") != effective_epoch
+                or receipt.get("corr") != corr
+                or receipt.get("actor") != actor):
+            return "unattributed"
+        phase = receipt.get("WalkPhase")
+        return phase if isinstance(phase, str) and phase else "Unmeasured"
+    except Exception:
+        return "Unmeasured"
+
+
+def _spread_mm(samples: list[list[int]]) -> int:
+    if len(samples) <= 1:
+        return 0
+    worst = 0
+    for i, a in enumerate(samples):
+        for b in samples[i + 1:]:
+            worst = max(worst, math.ceil(math.dist(a, b)))
+    return worst
+
+
+def compare_positions(server_pos, client_pos, *, tolerance_m: float = 0.25, y_tolerance_m: float = 0.30,
+                      settled_mm: bool = False, server_after_pos=None, client_phase: str | None = None,
+                      settled_ticks: int = DEFAULT_SETTLED_TICKS, settled_spread_mm: int = DEFAULT_SETTLED_SPREAD_MM,
+                      server_samples: list[list[int]] | None = None, client_samples: list[list[int]] | None = None) -> dict:
+    """Compare server vs client position in default Wave 13 mode (metres) or Card 55 E5 settled-mm mode.
+
+    Raw coordinates are never included in the returned dictionary.
+    """
+    if not settled_mm:
+        try:
+            pa = [float(v) for v in server_pos.split(",")] if isinstance(server_pos, str) else [float(v) for v in server_pos]
+            pb = [float(v) for v in client_pos.split(",")] if isinstance(client_pos, str) else [float(v) for v in client_pos]
+            if len(pa) != 3 or len(pb) != 3 or any(not math.isfinite(v) for v in pa + pb):
+                raise ValueError("invalid position")
+        except (TypeError, ValueError) as exc:
+            return {"verdict": "BLOCKED", "matches": False, "reason": str(exc)}
+        xz = math.dist((pa[0], pa[2]), (pb[0], pb[2]))
+        dy = abs(pa[1] - pb[1])
+        bad = xz > tolerance_m or dy > y_tolerance_m
+        return {"verdict": "FAIL" if bad else "PASS", "matches": not bad}
+
+    try:
+        if type(settled_ticks) is not int or settled_ticks < 1 or type(settled_spread_mm) is not int or settled_spread_mm < 0:
+            raise ValueError("invalid settled parameters")
+        before = _validate_xyz_mm(server_pos)
+        after = _validate_xyz_mm(before if server_after_pos is None else server_after_pos)
+        cpos = _validate_xyz_mm(client_pos)
+        s_list = [_validate_xyz_mm(s) for s in server_samples] if server_samples is not None else [before, after]
+        c_list = [_validate_xyz_mm(s) for s in client_samples] if client_samples is not None else [cpos]
+        if len(c_list) < settled_ticks:
+            return {"verdict": "BLOCKED", "matches": False, "reason": "insufficient settled ticks"}
+        if _spread_mm(s_list) > settled_spread_mm:
+            return {"verdict": "BLOCKED", "matches": False, "reason": "server moving: retain bracketing samples for classification"}
+        if _spread_mm(c_list) > settled_spread_mm:
+            return {"verdict": "BLOCKED", "matches": False, "reason": "client moving across settled window"}
+        if before != after:
+            return {"verdict": "BLOCKED", "matches": False, "reason": "server moving: retain bracketing samples for classification"}
+        dist = math.dist(cpos, before)
+        err_mm = math.ceil(dist)
+        threshold_mm = round(tolerance_m * 1000) if tolerance_m != 0.25 else LANDING_TOLERANCE_MM
+        settled = client_phase in SETTLED_PHASES
+        if settled and dist > threshold_mm:
+            return {"verdict": "FAIL", "matches": False, "error_mm": err_mm, "reason": f"landing outside {threshold_mm}mm"}
+        if not settled:
+            return {"verdict": "BLOCKED", "matches": False, "error_mm": err_mm, "reason": "client not settled"}
+        return {"verdict": "PASS", "matches": True, "error_mm": err_mm, "reason": "E5 scoped measurements agree"}
+    except (TypeError, ValueError) as exc:
+        return {"verdict": "BLOCKED", "matches": False, "reason": str(exc)}
+
+
+def _parse_pos_u64(value, label: str) -> int:
+    if isinstance(value, int) and not isinstance(value, bool):
+        n = value
+    elif isinstance(value, str) and re.fullmatch(r"[0-9]+", value.strip()):
+        n = int(value.strip())
+    else:
+        raise ValueError(f"invalid {label}")
+    if not 1 <= n < (1 << 64):
+        raise ValueError(f"invalid {label}")
+    return n
+
+
+def sample_e5_bracket(sim: str = "Jennifer", *, scope: dict | None = None,
+                      server_endpoint: str | None = None,
+                      client_endpoints: dict[str, str] | list[str] | None = None,
+                      side_reader: Callable[[str, Path], dict] | None = None,
+                      phase_reader: Callable[[str], str] | None = None,
+                      admin_factory=None,
+                      settled_ticks: int = DEFAULT_SETTLED_TICKS,
+                      settled_spread_mm: int = DEFAULT_SETTLED_SPREAD_MM,
+                      tolerance_mm: int = LANDING_TOLERANCE_MM,
+                      nav_epoch: int | None = None,
+                      epoch: int | None = None,
+                      corr: int | None = None,
+                      actor_id: int | None = None) -> dict:
+    """Card 55 E5 settled-bracket millimetre sampler in RAM (zero sleeps, zero coordinates returned).
+
+    Sequence:
+      1) Read server (:34029) -> server_before_mm (and observed_actor_id)
+      2) Concurrently read client1 (:34030) and client2 (:34031) via ThreadPoolExecutor(max_workers=2)
+      3) Read server (:34029) -> server_after_mm (and observed_actor_id)
+    Requires endpoint actor consistency across all 4 sampled endpoints and authoritative (nav_epoch, corr, actor)
+    receipt attribution. Grades via card55_live.collect_e5 / routing_evidence.score("E5", ...) rules and strips raw positions.
+    """
+    import card55_live as live
+    import routing_evidence as evidence
+
+    server_ep = server_endpoint or ENDPOINTS["server"]
+    if client_endpoints is None:
+        client_map = {"client1": compare_client.resolve("1"), "client2": compare_client.resolve("2")}
+    elif isinstance(client_endpoints, dict):
+        client_map = dict(client_endpoints)
+    else:
+        resolved = [compare_client.resolve(c) for c in client_endpoints]
+        if len(resolved) == 2:
+            client_map = {"client1": resolved[0], "client2": resolved[1]}
+        else:
+            client_map = {f"client{i + 1}": ep for i, ep in enumerate(resolved)}
+
+    def _blocked(reason: str) -> dict:
+        return dict(gate="E5", verdict="BLOCKED", hashes={}, counts={}, errors_mm={},
+                    reason=reason, server_steady=False,
+                    phases={label: "unattributed" for label in client_map})
+
+    if not isinstance(sim, str) or not sim.strip():
+        return _blocked("invalid sim name")
+
+    if scope is not None and not isinstance(scope, dict):
+        return _blocked("invalid scope")
+
+    try:
+        arg_nav_epoch = _parse_pos_u64(nav_epoch, "nav_epoch") if nav_epoch is not None else None
+        arg_epoch = _parse_pos_u64(epoch, "epoch") if epoch is not None else None
+        if arg_nav_epoch is not None and arg_epoch is not None and arg_nav_epoch != arg_epoch:
+            return _blocked("epoch conflict between nav_epoch and epoch")
+        explicit_epoch = arg_nav_epoch if arg_nav_epoch is not None else arg_epoch
+        explicit_corr = _parse_pos_u64(corr, "corr") if corr is not None else None
+        explicit_actor = _parse_pos_u64(actor_id, "actor_id") if actor_id is not None else None
+
+        scope_epoch = None
+        scope_corr = None
+        scope_actor = None
+        if isinstance(scope, dict):
+            raw_s_epoch = scope.get("epoch")
+            raw_s_nav_epoch = scope.get("nav_epoch")
+            s_epoch = _parse_pos_u64(raw_s_epoch, "scope epoch") if raw_s_epoch is not None else None
+            s_nav_epoch = _parse_pos_u64(raw_s_nav_epoch, "scope nav_epoch") if raw_s_nav_epoch is not None else None
+            if s_epoch is not None and s_nav_epoch is not None and s_epoch != s_nav_epoch:
+                return _blocked("scope epoch conflict between epoch and nav_epoch")
+            scope_epoch = s_epoch if s_epoch is not None else s_nav_epoch
+
+            raw_s_corr = scope.get("corr")
+            scope_corr = _parse_pos_u64(raw_s_corr, "scope corr") if raw_s_corr is not None else None
+
+            raw_s_actor = scope.get("actor")
+            raw_s_actor_id = scope.get("actor_id")
+            s_actor = _parse_pos_u64(raw_s_actor, "scope actor") if raw_s_actor is not None else None
+            s_actor_id = _parse_pos_u64(raw_s_actor_id, "scope actor_id") if raw_s_actor_id is not None else None
+            if s_actor is not None and s_actor_id is not None and s_actor != s_actor_id:
+                return _blocked("scope actor conflict between actor and actor_id")
+            scope_actor = s_actor if s_actor is not None else s_actor_id
+
+            raw_s_sim = scope.get("sim")
+            if raw_s_sim is not None:
+                if not isinstance(raw_s_sim, str) or not raw_s_sim.strip():
+                    return _blocked("invalid scope sim")
+                if raw_s_sim.strip() != sim.strip():
+                    return _blocked("sim conflict with scope")
+    except ValueError as exc:
+        return _blocked(str(exc))
+
+    if explicit_epoch is not None and scope_epoch is not None and explicit_epoch != scope_epoch:
+        return _blocked("epoch override conflict with scope")
+    if explicit_corr is not None and scope_corr is not None and explicit_corr != scope_corr:
+        return _blocked("corr override conflict with scope")
+    if explicit_actor is not None and scope_actor is not None and explicit_actor != scope_actor:
+        return _blocked("actor id mismatch")
+
+    resolved_epoch = explicit_epoch if explicit_epoch is not None else scope_epoch
+    resolved_corr = explicit_corr if explicit_corr is not None else scope_corr
+    expected_actor = explicit_actor if explicit_actor is not None else scope_actor
+
+    if (type(settled_ticks) is not int or settled_ticks < 1
+            or type(settled_spread_mm) is not int or settled_spread_mm < 0
+            or type(tolerance_mm) is not int or tolerance_mm <= 0):
+        return _blocked("invalid settled parameters")
+
+    # Compile/write probe source ONCE before dispatching concurrent client reads.
+    probe = write_probe_source([sim])
+    read_ep = side_reader or (lambda ep, pr=probe: run_side_in_memory(ep, pr))
+
+    def read_pos_and_actor(ep: str, req_actor: int | None = expected_actor) -> tuple[list[int], int]:
+        side = read_ep(ep, probe)
+        parsed = parse_sim_mm(side, sim, expected_actor=req_actor, require_actor=True)
+        return parsed["position_mm"], parsed["actor"]
+
+    def read_phase(ep: str, eff_actor: int) -> str:
+        if phase_reader is not None:
+            return phase_reader(ep)
+        return read_client_walk_phase(ep, corr=resolved_corr, actor=eff_actor, nav_epoch=resolved_epoch,
+                                      admin_factory=admin_factory)
+
+    def read_client_sample(label: str, ep: str, req_actor: int) -> tuple[str, dict]:
+        samples = []
+        observed_actors = set()
+        for _ in range(settled_ticks):
+            last_side = read_ep(ep, probe)
+            parsed = parse_sim_mm(last_side, sim, expected_actor=req_actor, require_actor=True)
+            samples.append(parsed["position_mm"])
+            observed_actors.add(parsed["actor"])
+        if len(observed_actors) != 1 or req_actor not in observed_actors:
+            raise ValueError("actor id mismatch")
+        phase = read_phase(ep, req_actor)
+        if not isinstance(phase, str) or not phase:
+            phase = "Unmeasured"
+        return label, {"position_mm": samples[-1], "phase": phase, "spread_mm": _spread_mm(samples), "actor": req_actor}
+
+    try:
+        server_before_pairs = [read_pos_and_actor(server_ep, expected_actor) for _ in range(settled_ticks)]
+        before_actors = {a for _, a in server_before_pairs}
+        if len(before_actors) != 1:
+            raise ValueError("actor id mismatch")
+        resolved_actor_id = next(iter(before_actors))
+        server_before_samples = [p for p, _ in server_before_pairs]
+        before = server_before_samples[-1]
+
+        items = list(client_map.items())
+        with ThreadPoolExecutor(max_workers=max(1, min(2, len(items)))) as pool:
+            futures = [pool.submit(read_client_sample, label, ep, resolved_actor_id) for label, ep in items]
+            client_results = dict(f.result() for f in futures)
+
+        server_after_pairs = [read_pos_and_actor(server_ep, resolved_actor_id) for _ in range(settled_ticks)]
+        server_after_samples = [p for p, _ in server_after_pairs]
+        after = server_after_samples[-1]
+    except Exception as exc:
+        return _blocked(str(exc))
+
+    server_spread = _spread_mm(server_before_samples + server_after_samples)
+    client_spread_bad = any(c["spread_mm"] > settled_spread_mm for c in client_results.values())
+    steady = (before == after) and (server_spread <= settled_spread_mm)
+    errors = {label: math.ceil(math.dist(before, c["position_mm"])) for label, c in client_results.items()}
+
+    normalized_scope = None
+    if isinstance(scope, dict):
+        normalized_scope = dict(scope)
+        normalized_scope.pop("nav_epoch", None)
+        normalized_scope.pop("actor_id", None)
+        if resolved_epoch is not None:
+            normalized_scope["epoch"] = resolved_epoch
+        if resolved_corr is not None:
+            normalized_scope["corr"] = resolved_corr
+        normalized_scope["actor"] = resolved_actor_id
+
+    # If a full Card 55 scope is supplied with client1 & client2 and standard 100mm tolerance, route through card55_live.collect_e5
+    full_scope = (isinstance(normalized_scope, dict)
+                  and {"run_id", "boot_id", "server_pid", "epoch", "corr", "actor", "generation"} <= set(normalized_scope))
+    if (full_scope and set(client_map) == {"client1", "client2"}
+            and tolerance_mm == LANDING_TOLERANCE_MM and not client_spread_bad and server_spread <= settled_spread_mm):
+        effective_scope = normalized_scope
+        server_reads = iter([{"position_mm": before}, {"position_mm": after}])
+        row = live.collect_e5(
+            effective_scope,
+            lambda: next(server_reads),
+            lambda: {side: {"position_mm": client_results[side]["position_mm"], "phase": client_results[side]["phase"]}
+                     for side in ("client1", "client2")},
+        )
+        obs_data = {
+            "final_cell_mm": before,
+            "server_before_mm": before,
+            "server_after_mm": after,
+            "client1": {"position_mm": client_results["client1"]["position_mm"], "phase": client_results["client1"]["phase"]},
+            "client2": {"position_mm": client_results["client2"]["position_mm"], "phase": client_results["client2"]["phase"]},
+        }
+        scored = evidence.score("E5", effective_scope, live._observation(effective_scope, obs_data))
+        return dict(row, reason=scored["reason"], server_steady=steady,
+                    phases={side: client_results[side]["phase"] for side in ("client1", "client2")})
+
+    failures = []
+    missing = []
+    if not steady:
+        missing.append("server moving: retain bracketing samples for classification")
+    if client_spread_bad:
+        missing.append("client moving across settled window")
+    for required_side in ("client1", "client2"):
+        if required_side not in client_results:
+            missing.append(f"missing {required_side}")
+    for label, c in client_results.items():
+        settled = c["phase"] in SETTLED_PHASES
+        if not settled:
+            missing.append(f"{label} not settled")
+        if settled and steady and not client_spread_bad:
+            if math.dist(c["position_mm"], before) > float(tolerance_mm):
+                failures.append(f"{label} landing outside {tolerance_mm}mm")
+
+    verdict = "FAIL" if failures else "BLOCKED" if missing else "PASS"
+    reason = "; ".join(failures + missing) or "E5 scoped measurements agree"
+    return dict(gate="E5", verdict=verdict, hashes={}, counts={}, errors_mm=errors,
+                reason=reason, server_steady=steady,
+                phases={label: c["phase"] for label, c in client_results.items()})
+
+
+def landing(sim: str, server: str, clients: list[str], read: Callable[[str, str], list[int]] | None = None,
+            *, phase_reader: Callable[[str], str] | None = None, require_settled_phase: bool = False) -> dict:
+    """Card 55 section C bracketed landing read: server_before -> concurrent clients -> server_after.
+    Returns errors in mm only, never positions.
+    """
+    if read is not None:
+        try:
+            before = _validate_xyz_mm(read(server, sim))
+            with ThreadPoolExecutor(max_workers=max(1, len(clients))) as pool:
+                positions = dict(zip(clients, pool.map(lambda endpoint: _validate_xyz_mm(read(endpoint, sim)), clients)))
+            after = _validate_xyz_mm(read(server, sim))
+        except Exception as exc:
+            return dict(server_steady=False, errors_mm={}, verdict="BLOCKED", reason=str(exc))
+        errors = {c: math.ceil(math.dist(before, p)) for c, p in positions.items()}
+        steady = before == after
+        if not require_settled_phase and phase_reader is None:
+            verdict = ("BLOCKED" if not steady else
+                       "PASS" if all(math.dist(before, p) <= LANDING_TOLERANCE_MM for p in positions.values()) else "FAIL")
+            return dict(server_steady=steady, errors_mm=errors, verdict=verdict)
+        phases = {c: (phase_reader(c) if phase_reader else read_client_walk_phase(c)) for c in clients}
+        failures = [c for c, p in positions.items() if steady and phases[c] in SETTLED_PHASES and math.dist(before, p) > LANDING_TOLERANCE_MM]
+        unsettled = [c for c, ph in phases.items() if ph not in SETTLED_PHASES]
+        verdict = "FAIL" if failures else "BLOCKED" if (not steady or unsettled) else "PASS"
+        return dict(server_steady=steady, errors_mm=errors, verdict=verdict, phases=phases)
+
+    client_map = {ep: ep for ep in clients}
+    res = sample_e5_bracket(sim, server_endpoint=server, client_endpoints=client_map, phase_reader=phase_reader)
+    return dict(server_steady=res["server_steady"], errors_mm=res["errors_mm"], verdict=res["verdict"],
+                reason=res.get("reason", ""), phases=res.get("phases", {}))
 
 
 def differs(field: str, a: str, b: str) -> bool:
@@ -234,7 +714,6 @@ CONFIRM_S = 1.0  # longer than the stream lag (a release reaches a client 0.06-0
 def read_machines(sim_id: str, endpoints: list[str]) -> dict[str, tuple[list[str], list[str]]]:
     """machines() of every game at once (threads), so a driver released between two reads does not show on one side
     only: one bridge call after another put about a second between the server's read and a client's."""
-    from concurrent.futures import ThreadPoolExecutor
     with ThreadPoolExecutor(max_workers=len(endpoints)) as pool:
         return dict(zip(endpoints, pool.map(lambda endpoint: machines(endpoint, sim_id), endpoints)))
 
@@ -295,20 +774,80 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--known", action="append", default=[],
                    help="a field (interaction, posture, prop:X, ...; comma-separated or repeated) whose mismatch is a known defect the "
                         "scenario names: shown as k, not counted as visible")
+    p.add_argument("--mm", action="store_true", help="card 55 E5 integer-millimetre mode")
+    p.add_argument("--settle-bracket", "--e5", "--settled-mm", "--landing", dest="settle_bracket", action="store_true",
+                   help="card 55 E5 settled-bracket millimetre mode (server_before -> concurrent clients -> server_after; <= 100 mm)")
+    p.add_argument("--settled-ticks", type=int, default=DEFAULT_SETTLED_TICKS,
+                   help="samples per endpoint in settled-mm mode (default 1)")
+    p.add_argument("--settled-spread-mm", type=int, default=DEFAULT_SETTLED_SPREAD_MM,
+                   help="maximum allowed spread in mm across settled samples (default 0)")
+    p.add_argument("--nav-epoch", "--epoch", dest="nav_epoch", type=int, default=None,
+                   help="required navigation epoch for ClientBoundaryRoute WalkPhase receipt attribution")
+    p.add_argument("--corr", type=int, default=None, help="required route correlation id for ClientBoundaryRoute WalkPhase")
+    p.add_argument("--actor-id", type=int, default=None, help="optional expected wire actor u64 for fail-closed verification")
+    p.add_argument("--json", action="store_true", help="emit sanitized JSON summary in E5 settled-mm mode (zero coordinates)")
     a = p.parse_args(argv)
     if a.client and a.clients:
         p.error("--client and --clients: give one")
     if a.client:
         ENDPOINTS["client"] = compare_client.use(a.client)
     try:
-        chosen = list(dict.fromkeys(compare_client.resolve(c) for c in a.clients.split(",") if c.strip())) or [ENDPOINTS["client"]]
+        if a.clients:
+            chosen = list(dict.fromkeys(compare_client.resolve(c) for c in a.clients.split(",") if c.strip()))
+        elif (a.mm or a.settle_bracket) and not a.client:
+            chosen = [compare_client.resolve("1"), compare_client.resolve("2")]
+        else:
+            chosen = [ENDPOINTS["client"]]
     except ValueError as ex:
         p.error(str(ex))
-    source = TEMPLATE.replace("__NAMES__", ",".join(a.sims)).replace("__PROPS__", "true" if a.props else "false") \
-        .replace("__MOODLETS__", "true" if a.moodlets else "false")
-    sys.path.insert(0, str(ROOT / "scripts"))
-    import probe_source
-    probe = probe_source.write(PROBE, source)  # its own file: a concurrent call cannot overwrite it before it compiles
+
+    if a.mm or a.settle_bracket:
+        if len(chosen) == 2 and chosen == [compare_client.resolve("1"), compare_client.resolve("2")]:
+            client_map = {"client1": chosen[0], "client2": chosen[1]}
+        else:
+            client_map = {compare_client.name(ep).replace(" ", ""): ep for ep in chosen}
+        scope_arg = {}
+        if a.actor_id is not None:
+            scope_arg["actor"] = a.actor_id
+        if a.corr is not None:
+            scope_arg["corr"] = a.corr
+        if a.nav_epoch is not None:
+            scope_arg["epoch"] = a.nav_epoch
+            scope_arg["nav_epoch"] = a.nav_epoch
+        results = {}
+        exit_code = 0
+        for name in a.sims:
+            res = sample_e5_bracket(
+                name,
+                scope=scope_arg or None,
+                server_endpoint=ENDPOINTS["server"],
+                client_endpoints=client_map,
+                settled_ticks=a.settled_ticks,
+                settled_spread_mm=a.settled_spread_mm,
+                nav_epoch=a.nav_epoch,
+                corr=a.corr,
+                actor_id=a.actor_id,
+            )
+            results[name] = {
+                "gate": "E5",
+                "verdict": res["verdict"],
+                "errors_mm": res["errors_mm"],
+                "server_steady": res["server_steady"],
+                "reason": res.get("reason", ""),
+            }
+            if res["verdict"] == "FAIL":
+                exit_code = 3
+            elif res["verdict"] != "PASS" and exit_code == 0:
+                exit_code = 4
+            if not a.json:
+                errors = ", ".join(f"{k} {mm} mm" for k, mm in res["errors_mm"].items()) or "no samples"
+                print(f"{name}: {res['verdict']} ({errors}; server {'steady' if res['server_steady'] else 'moving'})")
+        if a.json:
+            payload = results[a.sims[0]] if len(a.sims) == 1 else {"gate": "E5", "sims": results}
+            print(json.dumps(payload, sort_keys=True))
+        return exit_code
+
+    probe = write_probe_source(a.sims, props=a.props, moodlets=a.moodlets)
     server = run_side(ENDPOINTS["server"], probe)
     clients = {endpoint: run_side(endpoint, probe) for endpoint in chosen}
     for errors in [server.get(("-", "error"))] + [client.get(("-", "error")) for client in clients.values()]:
@@ -340,7 +879,7 @@ def report(server: dict, client: dict, known: set[str] | None = None) -> int:
         print(f"== {sim}" if sim != "-" else "== game")
         for key in [k for k in keys if k[0] == sim]:
             field = key[1]
-            if field == "error":
+            if field in IGNORE_FIELDS:
                 continue
             sv, cv = server.get(key, ["(none)"]), client.get(key, ["(none)"])
             if field.startswith("prop:"):

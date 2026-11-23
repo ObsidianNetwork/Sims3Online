@@ -10,7 +10,7 @@ pub const DEFAULT_ENDPOINT: &str = "127.0.0.1:34029";
 pub const DEFAULT_TIMEOUT_SECONDS: u64 = 15;
 pub const MAX_TIMEOUT_SECONDS: u64 = 600;
 pub const ANALYTICS_COMMAND: &str = "ANALYTICS";
-pub const FRONT_DOOR_LOCAL_COMMANDS: [&str; 2] = [ANALYTICS_COMMAND, "RUST_ROUTE_PLANS"];
+pub const FRONT_DOOR_LOCAL_COMMANDS: [&str; 3] = [ANALYTICS_COMMAND, "SYNC_POLICY_STATE", "RUST_ROUTE_PLANS"];
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Request {
@@ -62,6 +62,7 @@ pub fn local_reply(request: &Request) -> Option<String> {
 }
 pub fn commands_reply() -> String {
     let entries = include_str!("admin_commands.txt").lines()
+        .chain(["SYNC_POLICY_STATE (front-door-local, read-only; validated script revision and actual packet effects)"])
         .chain(["RUST_ROUTE_PLANS [<corr> [<cursor> [<max_lines> [<epoch>]]]]  (front-door-local; last 16 committed Rt/Vp plans, or one <=1900-byte page of one; epoch required after cursor 0; memory only)"])
         .map(json_string).collect::<Vec<_>>();
     format!("{{\"ok\":true,\"commands\":[{}]}}", entries.join(","))

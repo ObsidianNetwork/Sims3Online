@@ -9,6 +9,7 @@ use simlink_bridge::verbs::BridgeCommand;
 use simlink_headless_server::bridge_driver::{BridgeEndpoint, BridgeGameDriver, LiveBridge};
 use simlink_headless_server::messages::Command;
 use simlink_headless_server::{ConnId, GameDriver};
+use std::collections::VecDeque;
 
 const BASE: u32 = 0x0100_0000;
 const STALE: &str = "00000000000000000000000000000001";
@@ -45,6 +46,8 @@ struct Mod<'a> {
     stale: bool,
     text: bool,
     duplicate: bool,
+    description_reports: VecDeque<&'static str>,
+    strict_async: bool,
 }
 impl Mod<'_> {
     fn step(&mut self) {
@@ -64,6 +67,37 @@ impl Mod<'_> {
                 continue;
             }
             let corr = fields[1];
+            if fields[0] == "EXPORT_SIM_DESCRIPTION" {
+                let answer = self.description_reports.pop_front().unwrap_or("good");
+                let bytes = [0u8, 255, 2, 3];
+                let slot = BulkSlot::new(0).unwrap().byte_offset();
+                let metadata = BulkSlotHeader { state: BULK_STATE_HOST_READY,
+                    correlation_id: Guid::parse(if answer == "stale" { STALE } else { corr }).unwrap().to_dotnet_bytes(),
+                    total_length: bytes.len() as i32, crc32: crc32(&bytes) };
+                self.mem.poke(address(slot), &metadata.to_bytes());
+                self.mem.poke(address(slot + BULK_SLOT_HEADER_SIZE), &bytes);
+                let normal = format!("result=exported; slot=0; bytes=4; crc={:08X}; props=2; keys=1; objects=1; name=fixture", metadata.crc32);
+                let report = match answer {
+                    "missing" => "result=missing".into(),
+                    "no-metadata" => "result=exported".into(),
+                    "duplicate" => format!("{normal}; bytes=4"),
+                    "segments" => normal.replace("objects=1", "objects=2"),
+                    "oversize" => normal.replace("bytes=4", &format!("bytes={}", BULK_SLOT_PAYLOAD_MAX + 1))
+                        .replace("props=2", &format!("props={}", BULK_SLOT_PAYLOAD_MAX - 1)),
+                    "bad-crc" => normal.replace(&format!("crc={:08X}", metadata.crc32), "crc=00000000"),
+                    _ => normal,
+                };
+                let hex = match answer {
+                    "invalid-utf8" => "FF".into(),
+                    "odd-hex" => "123".into(),
+                    "mixed" => encode_text(&report).chars().enumerate().map(|(index, value)|
+                        if index % 2 == 0 { value.to_ascii_uppercase() } else { value.to_ascii_lowercase() }).collect(),
+                    _ => encode_text(&report).to_ascii_uppercase(),
+                };
+                host(self.mem, slot_byte_offset(HOST_SLOT_BASE).unwrap(), header.seq,
+                    &format!("AUTONOMY_PROBE|{corr}|ok|{hex}"));
+                continue;
+            }
             let mut lines = Vec::new();
             if self.stale {
                 lines.push(format!("BULK_REF|{STALE}|snapshot-part|0|0|2|941713|631D296E"));
@@ -97,12 +131,64 @@ impl Mod<'_> {
     }
 }
 impl Pacer for Mod<'_> {
-    fn pause(&mut self, _: u64) { self.step(); }
+    fn pause(&mut self, ms: u64) {
+        assert!(!self.strict_async || !self.multi || ms == 0, "async export must not wait for its native reply");
+        self.step();
+    }
 }
 fn attached(mem: &SimMemory, stale: bool, text: bool, duplicate: bool) -> LiveBridge<&SimMemory, Mod<'_>> {
-    let mut driver = BridgeDriver::new(mem, BASE, 100, Mod { mem, multi: false, stale, text, duplicate });
+    let mut driver = BridgeDriver::new(mem, BASE, 100, Mod { mem, multi: false, stale, text, duplicate,
+        description_reports: VecDeque::new(), strict_async: false });
     driver.connect().unwrap();
     LiveBridge::from_driver(driver)
+}
+
+fn description_endpoint<'a>(mem: &'a SimMemory, reports: &[&'static str]) -> LiveBridge<&'a SimMemory, Mod<'a>> {
+    let mut driver = BridgeDriver::new(mem, BASE, 100, Mod { mem, multi: false, stale: false, text: false,
+        duplicate: false, description_reports: reports.iter().copied().collect(), strict_async: true });
+    driver.connect().unwrap(); LiveBridge::from_driver(driver)
+}
+
+#[test]
+fn asynchronous_participant_export_reads_actual_native_metadata_and_owned_bulk_without_waiting() {
+    use simlink_headless_server::transport::{StreamReply, StreamRequest};
+    for report in ["good", "mixed"] {
+        let mem = memory();
+        let mut driver = BridgeGameDriver::new(description_endpoint(&mem, &[report]));
+        assert!(driver.participant_lifecycle_enabled());
+        assert!(driver.start_stream_request(&StreamRequest::ExportSimDescription(u64::MAX)).unwrap().is_none());
+        let StreamReply::Description(payload) = driver.poll_stream_request().unwrap().expect("nonblocking fixture completion") else { panic!("description expected"); };
+        assert_eq!(payload.desc, u64::MAX);
+        assert_eq!(payload.property_stream, [0, 255]);
+        assert_eq!(payload.res_key_table, [2]);
+        assert_eq!(payload.object_id_table, [3]);
+    }
+}
+
+#[test]
+fn malformed_oversized_or_unowned_async_export_cannot_reuse_a_previous_description() {
+    for report in ["missing", "no-metadata", "duplicate", "segments", "oversize", "bad-crc", "stale", "invalid-utf8", "odd-hex"] {
+        let mem = memory();
+        let mut endpoint = description_endpoint(&mem, &["good", report, "good"]);
+        for (index, success) in [true, false, true].into_iter().enumerate() {
+            let corr = Guid::parse(&format!("1234567890abcdef{:016x}", index + 1)).unwrap();
+            assert!(endpoint.begin_stream_command(&BridgeCommand::ExportSimDescription { corr, desc: u64::MAX }).unwrap().is_none());
+            let result = endpoint.poll_stream_command();
+            assert_eq!(result.is_ok(), success, "{report}");
+            if success && index == 0 {
+                // Deliberately leave the first good payload unclaimed. Starting
+                // the next export must clear it before accepting its response.
+            } else if success {
+                let payload = endpoint.take_description().expect("positive recovery");
+                assert_eq!(payload.desc, u64::MAX); assert_eq!(payload.property_stream, [0, 255]);
+            } else {
+                assert!(endpoint.take_description().is_none(), "{report} retained stale bytes");
+                let slot = BulkSlot::new(0).unwrap().byte_offset();
+                assert_eq!(BulkSlotHeader::from_bytes(&mem.peek(address(slot), BULK_SLOT_HEADER_SIZE)).unwrap().state,
+                    BULK_STATE_HOST_READY, "invalid metadata/ownership must not consume a slot");
+            }
+        }
+    }
 }
 
 #[test]

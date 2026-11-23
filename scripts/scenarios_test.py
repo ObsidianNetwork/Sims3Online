@@ -4522,6 +4522,363 @@ class BridgeTraceForward(unittest.TestCase):
         self.assertIn("--bridge-trace", self.boot_argv("--bridge-trace"))
 
 
+class Card55AdaptersAndOfflineStepsTest(unittest.TestCase):
+    """Card 55 preflight, Card55Scope adapters, offline step adapters, client_verdicts BLOCKED integrity, and zero coordinates on disk."""
+
+    ACTOR = 18031287978496800304
+
+    def test_preflight_blocks_routed_walk_and_invalid_selectors_even_with_executors_enabled(self) -> None:
+        spec = json.loads((sc.SCENARIOS / "routed_walk_multiroom_lot.json").read_text(encoding="utf-8"))
+        with mock.patch.object(sc, "RUST_ONLY_EXECUTORS", frozenset(sc.RUST_ONLY_KINDS)), \
+                mock.patch.object(sc, "reset", side_effect=AssertionError("touched reset")), \
+                mock.patch.object(sc, "ensure_player", side_effect=AssertionError("touched ensure_player")):
+            record = sc.run_scenario(spec, Path(tempfile.gettempdir()))
+        self.assertEqual(record["verdict"], "BLOCKED")
+        self.assertIn("card 55 preflight", record["failures"][0])
+        # Missing start file or non-memory load-simnav also fails preflight before reset
+        bad_spec = {
+            "name": "bad_c55", "start": "nonexistent_library_spot",
+            "steps": ["load-simnav:file.bin", "navigate_astar:Jennifer goal=simnav:0123456789abcdef:4"],
+            "after": ["rust-evidence:E1"],
+        }
+        with mock.patch.object(sc, "RUST_ONLY_EXECUTORS", frozenset(sc.RUST_ONLY_KINDS)):
+            gap = sc.rust_only_gap(bad_spec)
+        self.assertIn("missing start file", gap)
+        self.assertIn("load-simnav requires 'memory'", gap)
+
+    def test_card55_scope_adapters_claim_env_simnav_navigate_and_multiwalk_evidence(self) -> None:
+        from scripts import card55_g0
+        from scripts.routing_collectors_test import PAGE_ZERO, PAGE_LAST, CLIENT_ZERO, CLIENT_LAST
+        full_census = "roadPlace:on," + ",".join(f"{k}:0" for k in sorted(card55_g0.DECISIONS)) + ",lastHash:-"
+        replies = {
+            "SACS_RECORDER rust-navigation-status": (
+                "rust-navigation-status=ready;epoch=2;generation=3;installed=1;mapping_checked=1;"
+                "content_hash=0123456789abcdef;cells=12;portals=4;provenance=measured;storage=memory;"
+                "surfaces_measured=1;portals_measured=1;obstacles_and_locks_measured=1;cross_lot_measured=1"
+            ),
+            "SACS_RECORDER status": "rustRoute:on",
+            "SACS_RECORDER road-place-census": full_census,
+            "FRONT_DOOR_STATE": "totals|navigate_requests=4|plans_served=4|native_oracle_owned=0",
+            "SACS_RECORDER authority": "role=client;presenter_hook=present;authority_hook=present;puppet_suppressed=1",
+            f"SACS_RECORDER rust-simnav-install {sc.DEFAULT_LIBRARY_LOT} {self.ACTOR}": (
+                f"rust-simnav-install=accepted;lot={sc.DEFAULT_LIBRARY_LOT};actor={self.ACTOR};kernel_sim=2;"
+                f"epoch=2;generation=3;content_hash=0123456789abcdef;cells=12;portals=4;keys_held=1;actors=1;"
+                f"provenance=measured;storage=memory"
+            ),
+        }
+        admin_calls: list[str] = []
+
+        class FakeAdmin:
+            def __init__(self, endpoint: str) -> None:
+                self.endpoint = endpoint
+
+            def request(self, cmd: str) -> str:
+                admin_calls.append(cmd)
+                return replies[cmd]
+
+            def plan_page(self, corr: int, actor: int, *, client: bool = False, progress: bool = False):
+                pages = [CLIENT_ZERO, CLIENT_LAST] if progress else [PAGE_ZERO, PAGE_LAST]
+                # Make walk 1 fail on client2 if requested
+                if not progress and corr == 1 and self.endpoint.endswith("31") and getattr(self, "fail_walk1", False):
+                    pages = [PAGE_ZERO, PAGE_LAST.replace(b"|500|", b"|501|")]
+                it = iter([p.replace(b"corr=1", f"corr={corr}".encode("ascii")) for p in pages])
+                return lambda cursor, epoch: next(it)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            scope = sc.Card55Scope(admin_factory=FakeAdmin, archive_dir=Path(tmp))
+            # 1) claim-sim without per-actor tuple or with incomplete fallback honestly returns BLOCKED
+            self.assertEqual(scope.execute("claim-sim", "Jennifer")["verdict"], "BLOCKED")
+            # Reviewer repro: actor=123;kernel_sim=2;mapping_checked=1 with no 4-tuple and wrong actor ID -> BLOCKED
+            replies["SACS_RECORDER rust-navigation-status"] = "rust-navigation-status=ready;actor=123;kernel_sim=2;mapping_checked=1"
+            self.assertEqual(scope.execute("claim-sim", "Jennifer")["verdict"], "BLOCKED")
+            # Global mapping_checked=1 + Jennifer's actor + kernel_sim=2 without 4-tuple -> BLOCKED
+            replies["SACS_RECORDER rust-navigation-status"] = f"rust-navigation-status=ready;actor={self.ACTOR};kernel_sim=2;mapping_checked=1"
+            self.assertEqual(scope.execute("claim-sim", "Jennifer")["verdict"], "BLOCKED")
+            # Incomplete tuple (missing conn_id or player_id) -> BLOCKED
+            for bad_tuple in (f":{self.ACTOR}:2", f"3::{self.ACTOR}:2", f"0:1:{self.ACTOR}:2", f"3:0:{self.ACTOR}:2", f"3:1:{self.ACTOR}"):
+                replies["SACS_RECORDER rust-navigation-status"] = (
+                    f"rust-navigation-status=ready;epoch=2;generation=3;actor={self.ACTOR};kernel_sim=2;actor_claim={bad_tuple}"
+                )
+                self.assertEqual(scope.execute("claim-sim", "Jennifer")["verdict"], "BLOCKED")
+            # Wrong-Sim binding (sim=Bob or wire_u64 differs from Jennifer's actor ID) -> BLOCKED
+            replies["SACS_RECORDER rust-navigation-status"] = (
+                f"rust-navigation-status=ready;epoch=2;generation=3;sim=Bob;actor={self.ACTOR};kernel_sim=2;actor_claim=3:1:{self.ACTOR}:2"
+            )
+            self.assertEqual(scope.execute("claim-sim", "Jennifer")["verdict"], "BLOCKED")
+            replies["SACS_RECORDER rust-navigation-status"] = (
+                "rust-navigation-status=ready;epoch=2;generation=3;sim=Jennifer;actor=123;kernel_sim=2;actor_claim=3:1:123:2"
+            )
+            self.assertEqual(scope.execute("claim-sim", "Jennifer")["verdict"], "BLOCKED")
+            # Wrong-owner (player_id=2 when scope owner is player1) -> BLOCKED
+            replies["SACS_RECORDER rust-navigation-status"] = (
+                f"rust-navigation-status=ready;epoch=2;generation=3;sim=Jennifer;actor={self.ACTOR};kernel_sim=2;actor_claim=3:2:{self.ACTOR}:2"
+            )
+            self.assertEqual(scope.execute("claim-sim", "Jennifer")["verdict"], "BLOCKED")
+            # Reviewer repro: unparsed owner="session-owner" with complete player 2 tuple actor_claim=3:2:<Jennifer wire>:2 -> BLOCKED
+            for bad_owner in ("session-owner", "", "player0", "player-1", "host", "1", None):
+                bad_owner_scope = sc.Card55Scope(owner=bad_owner, admin_factory=FakeAdmin)
+                res_bad_owner = bad_owner_scope.execute("claim-sim", "Jennifer")
+                self.assertEqual(res_bad_owner["verdict"], "BLOCKED", f"owner={bad_owner!r} must block")
+                self.assertFalse(bad_owner_scope.claim_held)
+            # Explicit player_id conflict or invalid explicit player_id / conn_id -> BLOCKED
+            for bad_kwargs in ({"owner": "player1", "player_id": 2},
+                               {"owner": "player1", "player_id": 0},
+                               {"owner": "player1", "conn_id": 0}):
+                bad_kw_scope = sc.Card55Scope(admin_factory=FakeAdmin, **bad_kwargs)
+                self.assertEqual(bad_kw_scope.execute("claim-sim", "Jennifer")["verdict"], "BLOCKED")
+            # Conflicting duplicate actor_claim tuples for the same wire_u64 -> BLOCKED
+            for conflict_status in (
+                f"rust-navigation-status=ready;epoch=2;generation=3;sim=Jennifer;actor={self.ACTOR};kernel_sim=2;"
+                f"actor_claim=3:1:{self.ACTOR}:2,4:2:{self.ACTOR}:2",
+                f"rust-navigation-status=ready;epoch=2;generation=3;sim=Jennifer;actor={self.ACTOR};kernel_sim=2;"
+                f"actor_claim=3:1:{self.ACTOR}:2;actor_claim=3:2:{self.ACTOR}:2",
+            ):
+                replies["SACS_RECORDER rust-navigation-status"] = conflict_status
+                self.assertEqual(scope.execute("claim-sim", "Jennifer")["verdict"], "BLOCKED")
+            # Unclaimed load-simnav blocks without issuing rust-simnav-install; out-of-range u64 conn_id blocks
+            self.assertEqual(scope.execute("load-simnav", "memory")["verdict"], "BLOCKED")
+            self.assertFalse(any(c.startswith("SACS_RECORDER rust-simnav-install") for c in admin_calls))
+            replies["SACS_RECORDER rust-navigation-status"] = (
+                f"rust-navigation-status=ready;epoch=2;generation=3;sim=Jennifer;actor={self.ACTOR};kernel_sim=2;"
+                f"actor_claim={1 << 64}:1:{self.ACTOR}:2"
+            )
+            self.assertEqual(scope.execute("claim-sim", "Jennifer")["verdict"], "BLOCKED")
+            # Complete, Sim-bound, owner-matching per-actor (conn_id, player_id, wire_u64, kernel_u32) tuple -> PASS
+            replies["SACS_RECORDER rust-navigation-status"] = (
+                f"rust-navigation-status=ready;epoch=2;generation=3;installed=1;mapping_checked=1;"
+                f"content_hash=0123456789abcdef;cells=12;portals=4;provenance=measured;storage=memory;"
+                f"surfaces_measured=1;portals_measured=1;obstacles_and_locks_measured=1;cross_lot_measured=1;"
+                f"sim=Jennifer;actor={self.ACTOR};kernel_sim=2;actor_claim=3:1:{self.ACTOR}:2"
+            )
+            self.assertEqual(scope.execute("claim-sim", "Jennifer")["verdict"], "PASS")
+            # 2) rust-env blocks on incomplete road census or unmeasured native_oracle_owned, passes when measured & suppressed
+            replies["SACS_RECORDER road-place-census"] = "roadPlace:on"
+            self.assertEqual(scope.execute("rust-env", "SIMSONLINE_RUST_ROUTE=1")["verdict"], "BLOCKED")
+            replies["SACS_RECORDER road-place-census"] = full_census
+            replies["FRONT_DOOR_STATE"] = "totals|navigate_requests=4|plans_served=4|native_oracle_owned=unmeasured"
+            self.assertEqual(scope.execute("rust-env", "SIMSONLINE_RUST_ROUTE=1")["verdict"], "BLOCKED")
+            replies["FRONT_DOOR_STATE"] = "totals|navigate_requests=4|plans_served=4|native_oracle_owned=0"
+            self.assertEqual(scope.execute("rust-env", "SIMSONLINE_RUST_ROUTE=1")["verdict"], "PASS")
+            # 3) load-simnav rejects non-memory, passes on memory metadata
+            self.assertEqual(scope.execute("load-simnav", "file.simnav")["verdict"], "BLOCKED")
+            self.assertEqual(scope.execute("load-simnav", "memory")["verdict"], "PASS")
+            self.assertEqual(scope.content_hash, "0123456789abcdef")
+            # 4) navigate_astar rejects *_UNAVAILABLE and hash mismatch, records attempted walks and blocks honestly
+            self.assertEqual(scope.execute("navigate_astar", "Jennifer goal=measured_upper_cell_UNAVAILABLE")["verdict"], "BLOCKED")
+            self.assertEqual(scope.execute("navigate_astar", "Jennifer goal=simnav:ffffffffffffffff:4")["verdict"], "BLOCKED")
+            self.assertEqual(len(scope.attempted_walks), 0)
+            w1 = scope.execute("navigate_astar", "Jennifer start=simnav:0123456789abcdef:1 goal=simnav:0123456789abcdef:4")
+            w2 = scope.execute("navigate_astar", "Jennifer goal=simnav:0123456789abcdef:9")
+            self.assertEqual((w1["verdict"], w2["verdict"]), ("BLOCKED", "BLOCKED"))
+            self.assertEqual([w["corr"] for w in scope.attempted_walks], [1, 2])
+            self.assertEqual(len(scope.executed_walks), 0)
+            self.assertEqual(scope.executed_routes, 0)
+            # 5) E2 across 2 BLOCKED navigate_astar walks MUST stay BLOCKED even if counters incremented by +2!
+            replies["FRONT_DOOR_STATE"] = "totals|navigate_requests=6|plans_served=6|native_oracle_owned=0"
+            self.assertEqual(scope.execute("rust-evidence", "E2")["verdict"], "BLOCKED")
+            # Only when 2 walks have independent verified execution observations (executed_routes == 2) does E2 PASS
+            scope.executed_routes = 2
+            self.assertEqual(scope.execute("rust-evidence", "E2")["verdict"], "PASS")
+            # 6) Multi-walk combine_walks: Walk 1 FAIL is never masked by Walk 2 PASS
+            def fail_walk1_factory(ep: str):
+                adm = FakeAdmin(ep)
+                adm.fail_walk1 = True
+                return adm
+            scope.admin_factory = fail_walk1_factory
+            self.assertEqual(scope.execute("rust-evidence", "E3")["verdict"], "FAIL")
+            # Verify archived files contain zero raw coordinates
+            for f in Path(tmp).glob("*.json"):
+                text = f.read_text(encoding="utf-8")
+                for forbidden in ("position_mm", "server_before_mm", "server_after_mm", "final_cell_mm", "Vp|rt"):
+                    self.assertNotIn(forbidden, text)
+
+    def test_progressed_card55_run_scrubs_reset_and_sims_coordinates_from_record_and_report(self) -> None:
+        spec = {
+            "name": "routed_walk_progressed_mock",
+            "summary": "Card 55 coordinate scrub test",
+            "expect": "pass",
+            "clients": [1, 2],
+            "steps": ["claim-sim:Jennifer"],
+            "after": ["sims:Jennifer"],
+        }
+
+        def fake_reset(*_args, note=None, **_kwargs) -> str:
+            if note is not None:
+                note["start"] = ["Jennifer 0.45 m off its start at=124.50,218.75 after the reset"]
+            return "ok move Jennifer at=124.50,12.30,218.75\ncamera: server focused [124.50, 12.30, 218.75]"
+
+        def fake_python(script: str, *args, **_kwargs):
+            if script == "scripts/sim_compare.py":
+                return (
+                    3,
+                    "== Jennifer\n"
+                    "pos|Jennifer|124.50,12.30,218.75\n"
+                    " ! pos                        124.50,12.30,218.75                          | 125.10,12.30,219.00\n"
+                    " ! facing                     0.00,1.00                                    | 1.00,0.00\n"
+                    "1 visible mismatch(es)",
+                )
+            return 0, ""
+
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.object(sc, "RUST_ONLY_EXECUTORS", frozenset(sc.RUST_ONLY_KINDS)), \
+                mock.patch.object(sc, "resume_paused", return_value=""), \
+                mock.patch.object(sc, "ensure_player", return_value=(True, "player 2 on Pablo at=124.50,218.75")), \
+                mock.patch.object(sc, "reset", side_effect=fake_reset), \
+                mock.patch.object(sc, "reset_check", return_value=([], ["Jennifer: idle and standing at=124.50,218.75"])), \
+                mock.patch.object(sc, "replay_snapshot", return_value={}), \
+                mock.patch.object(sc, "note_replay"), \
+                mock.patch.object(sc, "rust_step_result", return_value={"verdict": "PASS", "reason": "claim-sim observation validated"}), \
+                mock.patch.object(sc, "python", side_effect=fake_python):
+            record = sc.run_scenario(spec, Path(tmp))
+            sc.report(Path(tmp), [record])
+            report_md = (Path(tmp) / "report.md").read_text(encoding="utf-8")
+            records_json = (Path(tmp) / "records.json").read_text(encoding="utf-8")
+            record_dump = json.dumps(record)
+
+        for artifact in (record_dump, report_md, records_json):
+            for forbidden in ("124.50", "218.75", "125.10", "219.00", "at=124", "pos|Jennifer"):
+                self.assertNotIn(forbidden, artifact)
+            self.assertNotIn("at=124.50", artifact)
+        self.assertIn("at=<redacted>", record_dump)
+        self.assertIn("pos|<redacted>", record_dump)
+
+    def test_scope_only_card55_run_suppresses_motion_watch_and_scrubs_all_coordinate_formats(self) -> None:
+        # Reviewer Finding 3: spec has non-empty _card55_scope, watch configured, and ordinary steps/after-checks
+        # so uses_rust_only(spec) is False while is_card55_scenario(spec) is True.
+        spec = {
+            "name": "scope_only_card55_mock",
+            "summary": "Scope-only Card 55 watcher suppression and redaction test",
+            "expect": "pass",
+            "clients": [1, 2],
+            "watch": {"sims": ["Jennifer"], "seconds": 15, "events": True},
+            "steps": ["set_sim_pose:Jennifer:standing"],
+            "after": ["sims:Jennifer"],
+            "_card55_scope": sc.Card55Scope(),
+            "_offline_state": {"offline": True, "valid_poses": {"standing"}, "sims": {"Jennifer": {"pose": "idle"}}},
+        }
+        self.assertFalse(sc.uses_rust_only(spec))
+        self.assertTrue(sc.is_card55_scenario(spec))
+        self.assertTrue(sc.is_card55_scenario({"name": "e5_after_only", "steps": [], "after": ["sims:Jennifer --e5"]}))
+
+        python_calls: list[str] = []
+
+        def fake_reset(*_args, note=None, **_kwargs) -> str:
+            if note is not None:
+                note["start"] = ["Jennifer Martinez off start at=120, 457 goal=120,68,457"]
+            return (
+                "server: posmm|Jennifer Martinez|123450,67890,456780\n"
+                "client1: pos|Bob Newbie|124.50, 68.00, 218.75\n"
+                "tuple=(123450, 67890, 456780) target=(120.5, 68.2, 457) Vp|rt|1|2|3"
+            )
+
+        def fake_python(script: str, *args, **_kwargs):
+            python_calls.append(script)
+            if script == "scripts/motion_watch.py":
+                raise AssertionError("motion_watch.py must NEVER run when is_card55_scenario(spec) is True")
+            if script == "scripts/sim_compare.py":
+                return (
+                    0,
+                    "== Jennifer\n"
+                    "server: posmm|Jennifer Martinez|123450,67890,456780\n"
+                    "  pos                        124.50,12.30,218.75                          | 124.50,12.30,218.75\n"
+                    "0 visible mismatch(es)",
+                )
+            return 0, ""
+
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.object(sc, "resume_paused", return_value=""), \
+                mock.patch.object(sc, "ensure_player", return_value=(True, "player 1 on Jennifer at=120, 457")), \
+                mock.patch.object(sc, "reset", side_effect=fake_reset), \
+                mock.patch.object(sc, "reset_check", return_value=([], ["Jennifer: standing target=(120.5, 68.2, 457)"])), \
+                mock.patch.object(sc, "replay_snapshot", return_value={}), \
+                mock.patch.object(sc, "note_replay"), \
+                mock.patch.object(sc, "python", side_effect=fake_python):
+            record = sc.run_scenario(spec, Path(tmp))
+            sc.report(Path(tmp), [record])
+            report_md = (Path(tmp) / "report.md").read_text(encoding="utf-8")
+            records_json = (Path(tmp) / "records.json").read_text(encoding="utf-8")
+            record_dump = json.dumps(record)
+
+        self.assertNotIn("scripts/motion_watch.py", python_calls)
+        self.assertEqual(record["verdict"], "PASS")
+        for artifact in (record_dump, report_md, records_json):
+            for forbidden in ("123450", "67890", "456780", "124.50", "218.75", "120.5", "68.2", "457", "Vp|rt|1"):
+                self.assertNotIn(forbidden, artifact)
+
+    def test_sanitize_card55_text_unit_cases_and_preservations(self) -> None:
+        raw = (
+            "server: posmm|Jennifer Martinez|123450,67890,456780\n"
+            "client1: pos|Bob Newbie|124.50, 68.00, 218.75\n"
+            "tuple=(123450, 67890, 456780) target=(120.5, 68.2, 457)\n"
+            "at=120, 457 goal=120,68,457 spot=[10, 20, 30]\n"
+            "wire: Vp|rt|1|2|3\n"
+            "keep: actor_claim=3:2:998877:2 corr=1 epoch=2 executed_routes=2 date=2026-11-23"
+        )
+        scrubbed = sc.sanitize_card55_text(raw)
+        for forbidden in (
+            "123450", "67890", "456780", "124.50", "68.00", "218.75",
+            "120.5", "68.2", "457", "120", "68", "10, 20, 30", "Vp|rt|1|2|3",
+        ):
+            self.assertNotIn(forbidden, scrubbed)
+        for preserved in ("actor_claim=3:2:998877:2", "corr=1", "epoch=2", "executed_routes=2", "2026-11-23"):
+            self.assertIn(preserved, scrubbed)
+
+    def test_client_verdicts_never_emits_pass_when_scenario_is_blocked_and_zero_coords_in_report(self) -> None:
+        blocked_rec = {"name": "routed_walk_multiroom_lot", "summary": "s", "expect": "pass",
+                       "verdict": "BLOCKED", "met": False, "failures": ["step navigate_astar: blocked"], "log": [], "images": [], "timings": {}}
+        verdicts = sc.client_verdicts(blocked_rec, ["1", "2"])
+        self.assertEqual(verdicts["1"]["verdict"], "BLOCKED")
+        self.assertEqual(verdicts["2"]["verdict"], "BLOCKED")
+        with tempfile.TemporaryDirectory() as tmp:
+            sc.report(Path(tmp), [blocked_rec])
+            for fname in ("report.md", "records.json"):
+                content = (Path(tmp) / fname).read_text(encoding="utf-8")
+                for forbidden in ("position_mm", "server_before_mm", "server_after_mm", "final_cell_mm", "SIMNAV01", "SIMROAD01"):
+                    self.assertNotIn(forbidden, content)
+
+    def test_offline_step_adapters_fail_closed_and_update_in_memory_state(self) -> None:
+        state = {
+            "offline": True,
+            "content_hash": "0123456789abcdef",
+            "valid_poses": {"standing", "seated"},
+            "cells": {1: {"reachable": True}, 2: {"reachable": False}},
+            "objects": {"Chair1": {"cell": 1, "routable": True}, "LockedDoor": {"cell": 2, "routable": False}},
+            "spots": {"plaza": 1},
+            "households": {"Martinez", "Langerak"},
+            "sims": {"Jennifer": {"pose": "standing", "cell": 0, "home_cell": 0, "queue": ["ReadBook"]}},
+        }
+        # Missing state or live flag -> BLOCKED
+        self.assertEqual(sc.set_sim_pose("Jennifer", "seated", state=None)["verdict"], "BLOCKED")
+        self.assertEqual(sc.set_sim_pose("Unknown", "seated", state=state)["verdict"], "BLOCKED")
+        self.assertEqual(sc.set_sim_pose("Jennifer", "flying", state=state)["verdict"], "BLOCKED")
+        self.assertEqual(sc.set_sim_pose("Jennifer", "seated", state=state)["verdict"], "PASS")
+        self.assertEqual(state["sims"]["Jennifer"]["pose"], "seated")
+
+        self.assertEqual(sc.route_and_wait("Jennifer", "simnav:0123456789abcdef:99", state=state)["verdict"], "BLOCKED")
+        self.assertEqual(sc.route_and_wait("Jennifer", "simnav:0123456789abcdef:2", state=state)["verdict"], "FAIL")
+        self.assertEqual(sc.route_and_wait("Jennifer", "simnav:0123456789abcdef:1", state=state)["verdict"], "PASS")
+
+        self.assertEqual(sc.route_to_object("Jennifer", "MissingObj", state=state)["verdict"], "BLOCKED")
+        self.assertEqual(sc.route_to_object("Jennifer", "LockedDoor", state=state)["verdict"], "FAIL")
+        self.assertEqual(sc.route_to_object("Jennifer", "Chair1", state=state)["verdict"], "PASS")
+
+        self.assertEqual(sc.cancel_interaction("Jennifer", "Nonexistent", state=state)["verdict"], "BLOCKED")
+        self.assertEqual(sc.cancel_interaction("Jennifer", "ReadBook", state=state)["verdict"], "PASS")
+        self.assertEqual(sc.cancel_interaction("Jennifer", state=state)["verdict"], "BLOCKED")
+
+        self.assertEqual(sc.teleport_sim("Jennifer", "unknown_spot", state=state)["verdict"], "BLOCKED")
+        self.assertEqual(sc.teleport_sim("Jennifer", "plaza", state=dict(state, card55_mode=True))["verdict"], "BLOCKED")
+        self.assertEqual(sc.teleport_sim("Jennifer", "plaza", state=state)["verdict"], "PASS")
+
+        self.assertEqual(sc.switch_active_household("Goth", state=state)["verdict"], "BLOCKED")
+        self.assertEqual(sc.switch_active_household("Langerak", state=state)["verdict"], "PASS")
+        self.assertEqual(state["active_household"], "Langerak")
+
+        self.assertEqual(sc.reset_sim("MissingSim", state=state)["verdict"], "BLOCKED")
+        self.assertEqual(sc.reset_sim("Jennifer", state=state)["verdict"], "PASS")
+        self.assertEqual(state["sims"]["Jennifer"]["pose"], "standing")
+
+
 if __name__ == "__main__":
     unittest.main()
 

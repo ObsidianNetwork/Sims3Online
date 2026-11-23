@@ -9,6 +9,10 @@ pub mod kernel_default;
 pub mod routing;
 pub mod routing_astar;
 pub mod live_navigation;
+// Overhaul-track planner (point/slot goals, budget, reachability gate). Off by
+// default so the sealed card 55 build is unchanged (internal documentation).
+#[cfg(feature = "nav-planner")]
+pub mod nav_planner;
 pub mod private_navigation;
 pub mod road_placement;
 pub mod jazz_sacs;

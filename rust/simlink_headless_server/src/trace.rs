@@ -22,10 +22,28 @@ impl GameDriver for RecordedPump {
     fn poll_event_lines(&mut self) -> Result<Vec<Vec<u8>>, crate::DriverError> { Ok(Vec::new()) }
     fn claimed_sims(&self) -> Vec<u64> { self.claims.clone() }
     fn recorder(&mut self, args: &[String]) -> Result<String, crate::DriverError> {
-        let packet = self.recorder.pop_front().ok_or_else(|| crate::DriverError(format!("unexpected recorder request {args:?}")))?;
-        if packet["args"] != json!(args) {
-            return Err(crate::DriverError(format!("recorder request {args:?} != {}", packet["args"])));
+        // The script lists a pump's requests in the controller's order (history, then the live dump). This server
+        // interleaves the live dump with the history pages so established Sims keep moving during a gather, so a
+        // request is answered by the first scripted reply with the same arguments, not by the next one in line.
+        // The frames sent to clients are what the differential compares.
+        let wanted = json!(args);
+        // A history page request also carries this server's snapshot token (and the targets for the boundary
+        // handle), which the script cannot know: a scripted reply answers a request it is a prefix of. A reply
+        // without snapshot metadata is taken as an untokenized page.
+        // This server may ask for the live lines once more in a pump than the controller did (after a history
+        // gather ends). The script has no reply for that; the recorder's answer when nothing new was recorded is
+        // an empty dump at the cursor asked from.
+        if args.first().is_some_and(|name| name == "dump") && args.len() >= 2
+            && !self.recorder.iter().any(|packet| packet["args"][0] == "dump") {
+            return Ok(format!("seq={};more=0", args[1]));
         }
+        let at = self.recorder.iter().position(|packet| packet["args"] == wanted
+                || (args.first().is_some_and(|name| name == "snapshot-driver")
+                    && packet["args"].as_array().is_some_and(|scripted| scripted.len() >= 3 && scripted.len() < args.len()
+                        && scripted.iter().zip(args).all(|(scripted, asked)| scripted.as_str() == Some(asked.as_str())))))
+            .ok_or_else(|| crate::DriverError(format!("unexpected recorder request {args:?}; scripted: {:?}",
+                self.recorder.iter().map(|packet| packet["args"].to_string()).collect::<Vec<_>>())))?;
+        let packet = self.recorder.remove(at).expect("position is in range");
         text(&packet, "report").map(str::to_owned).map_err(|e| crate::DriverError(e.to_string()))
     }
 }

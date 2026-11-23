@@ -30,6 +30,8 @@ pub enum StreamRequest {
     Snapshot(i64),
     Recorder(Vec<String>),
     DiagState,
+    ProbeSimState(Vec<u64>),
+    ExportSimDescription(u64),
 }
 
 #[derive(Clone, Debug)]
@@ -37,6 +39,8 @@ pub enum StreamReply {
     Snapshot(Option<crate::snapshot::Snapshot>),
     Recorder(String),
     DiagState(Option<String>),
+    SimState(String),
+    Description(simlink_bridge::verbs::SimDescriptionPayload),
 }
 
 /// The seam between the session and the server game (§J.6).
@@ -60,10 +64,23 @@ pub trait GameDriver {
             StreamRequest::Snapshot(since) => StreamReply::Snapshot(self.snapshot(*since)?),
             StreamRequest::Recorder(args) => StreamReply::Recorder(self.recorder(args)?),
             StreamRequest::DiagState => StreamReply::DiagState(self.diag_state()?),
+            StreamRequest::ProbeSimState(ids) => StreamReply::SimState(self.probe_sim_state(ids)?),
+            StreamRequest::ExportSimDescription(desc) => StreamReply::Description(self.export_sim_description(*desc)?),
         }))
     }
     fn poll_stream_request(&mut self) -> Result<Option<StreamReply>, DriverError> { Ok(None) }
     fn stream_request_pending(&self) -> bool { false }
+    /// Changes only on an accepted world replacement, distinct from navigation refresh.
+    fn presentation_world_generation(&self) -> u64 { 0 }
+    /// Invalidates outstanding state reads even when a claim changes and changes back.
+    fn state_authority_generation(&self) -> u64 { 0 }
+    /// Explicit capability: deterministic transports do not emulate native Sim creation.
+    /// A native implementation must never downgrade this on an IO failure.
+    fn participant_lifecycle_enabled(&self) -> bool { false }
+    fn export_sim_description(&mut self, _desc: u64) -> Result<simlink_bridge::verbs::SimDescriptionPayload, DriverError> {
+        Err(DriverError("participant description export unsupported".into()))
+    }
+    fn presentation_world_cut_complete(&mut self, _generation:u64) {}
     fn baseline_pending(&self, _conn: crate::ConnId) -> bool { false }
     fn baseline_failed(&self, _conn: crate::ConnId) -> bool { false }
     fn baseline_closed(&mut self, _conn: crate::ConnId) {}
@@ -97,6 +114,8 @@ pub trait GameDriver {
     /// Emit the epoch through the driver after the stream's barrier, then mark it announced.
     fn announced(&mut self, _epoch: u64) {}
     fn ring_available(&self) -> bool { false }
+    fn discard_pages(&mut self) -> Result<usize,DriverError> { Ok(0) }
+    fn ring_report(&self) -> String { "ring_available=0".into() }
     fn claimed_sims(&self) -> Vec<u64> { Vec::new() }
     fn owner(&self, _sim: u64) -> Option<i32> { None }
     fn event_drop_state(&self) -> String { "-".into() }
@@ -104,6 +123,11 @@ pub trait GameDriver {
     /// Drivers without a kernel world leave this unmeasured.
     fn routing_state(&self) -> Option<String> { None }
     fn diag_state(&mut self) -> Result<Option<String>, DriverError> { Ok(None) }
+    fn probe_sim_state(&mut self, _ids: &[u64]) -> Result<String, DriverError> { Ok("-".into()) }
+    /// Advance or poll claimed-Sim parity probes without blocking the pump loop.
+    fn poll_claimed_parity(&mut self, _now_ms: u64, _interval_ms: f64, _paused: bool) -> Result<Vec<crate::routing::RoutedEvent>, DriverError> {
+        Ok(Vec::new())
+    }
 
     /// End the player's connection lease on supersede or an explicit leave (§E).
     fn release_player(&mut self, _player: i32) {}

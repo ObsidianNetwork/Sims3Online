@@ -1160,10 +1160,13 @@ public sealed class HeadlessSims3Host : IAuthoritativeSimulationHost, IMirrorHos
     private static string EnsureSims3Extension(string saveName) =>
         saveName.EndsWith(".sims3", StringComparison.OrdinalIgnoreCase) ? saveName : saveName + ".sims3";
 
-    private static string? FindNewestSaveFolder(string saveName)
+    private static string? FindNewestSaveFolder(string saveName) => FindNewestSaveFolder(saveName, SaveRoots());
+
+    internal static string? FindNewestSaveFolder(string saveName, IEnumerable<string> roots)
     {
-        return SaveRoots()
-            .Select(root => Path.Combine(root, EnsureSims3Extension(saveName)))
+        string suffixed = EnsureSims3Extension(saveName);
+        return roots
+            .SelectMany(root => new[] { Path.Combine(root, suffixed), Path.Combine(root, suffixed[..^6]) })
             .Where(folder => Directory.Exists(folder) && Directory.GetFiles(folder, "*.nhd").Length > 0)
             .OrderByDescending(folder => Directory.GetFiles(folder, "*.nhd").Max(File.GetLastWriteTimeUtc))
             .FirstOrDefault();

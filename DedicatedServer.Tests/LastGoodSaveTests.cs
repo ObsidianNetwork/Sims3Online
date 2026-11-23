@@ -50,6 +50,21 @@ internal static partial class Program
         return saves;
     }
 
+    [Test("LastGoodSave.FolderForCanonicalizesBothSaveForms")]
+    private static void LastGoodSaveFolderForCanonicalizesBothSaveForms()
+    {
+        string folder = Path.Combine("Saves", "Town");
+        foreach (string spelling in new[] { folder, folder + ".sims3" })
+        {
+            Assert(LastGoodSave.FolderFor(spelling) == folder + ".sims3.lastgood",
+                "Both selected folder forms must share the boot recovery identity.");
+            Assert(LastGoodSave.FolderFor(spelling + Path.DirectorySeparatorChar) == folder + ".sims3.lastgood",
+                "A trailing directory separator must not change backup identity.");
+        }
+        Assert(LastGoodSave.FolderFor(folder + ".SIMS3") == folder + ".SIMS3.lastgood",
+            "An existing case-insensitive suffix must not be duplicated.");
+    }
+
     [Test("LastGoodSave.ProblemFindsCutAndMissingFiles")]
     private static void LastGoodSaveProblemFindsCutAndMissingFiles()
     {
