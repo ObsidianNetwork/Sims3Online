@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>SimsOnline.Client</AssemblyName>
+    <RootNamespace>SimsOnline.Client</RootNamespace>
+    <Description>Player mirror client application for SimsOnline (The Sims 3 multiplayer mod).</Description>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)' == 'Release' And '$(SENTRY_AUTH_TOKEN)' != '' And '$(SENTRY_ORG)' != '' And '$(SENTRY_PROJECT)' != ''">
+    <SentryOrg>$(SENTRY_ORG)</SentryOrg>
+    <SentryProject>$(SENTRY_PROJECT)</SentryProject>
+    <SentryUploadSymbols>true</SentryUploadSymbols>
+    <SentryUploadSources>true</SentryUploadSources>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\DedicatedServer\SimsOnline.DedicatedServer.csproj" />
+    <!-- card 57 ruling 4: every protocol type comes from SimsOnline.Protocol. The
+         DedicatedServer reference above stays through the wave (its non-protocol uses; §I). -->
+    <ProjectReference Include="..\SimsOnline.Protocol\SimsOnline.Protocol.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Only mod files that SimsOnline.DedicatedServer does not already compile. The other mod filters
+         (TerminalInteractionFilter, RoutingInteractionFilter, InteractionReplayApplySorter,
+         SitTransitionEmitFilter) come in through the project reference; linking them here as well
+         compiled a second copy of each public type (CS0436). -->
+    <Compile Include="..\SimsOnlineServerHostMod\OwnedHostDetourFilter.cs" Link="Linked\OwnedHostDetourFilter.cs" />
+  </ItemGroup>
+</Project>

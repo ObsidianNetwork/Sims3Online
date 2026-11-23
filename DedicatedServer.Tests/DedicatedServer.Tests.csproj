@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Wave 7 · C# <-> Rust authority sidecar round-trip tests (card 31 / card 33).
+    A separate VSTest-capable project so `dotnet test` (used by
+    the authority harness) can discover and run
+    these with the NUnit3 adapter — the sibling SimsOnline.DedicatedServer.Tests
+    project uses a custom reflection runner that `dotnet test` cannot see.
+
+    It compiles ONLY RustAuthoritySidecarTests.cs (default items off) so it never
+    pulls in the custom runner's Program.cs / Main, and references the controller
+    so the test drives the real RustAuthoritySidecar adapter type. Packages are
+    the exact versions already in the local NuGet cache (offline-capable).
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <EnableDefaultItems>false</EnableDefaultItems>
+    <AssemblyName>DedicatedServer.Tests</AssemblyName>
+    <RootNamespace>DedicatedServer.Tests</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="RustAuthoritySidecarTests.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\DedicatedServer\SimsOnline.DedicatedServer.csproj" />
+    <!-- card 57 ruling 4: the public protocol types live in SimsOnline.Protocol. -->
+    <ProjectReference Include="..\SimsOnline.Protocol\SimsOnline.Protocol.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="NUnit" Version="5.0.0" />
+    <PackageReference Include="NUnit3TestAdapter" Version="6.3.1" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
+  </ItemGroup>
+</Project>

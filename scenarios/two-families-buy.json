@@ -1,0 +1,24 @@
+{
+  "name": "two-families-buy",
+  "summary": "With each family at home, the Langeraks pay 150 simoleons on the server (Household.ModifyFamilyFunds, the funnel buy mode pays through): both clients read the server's funds for both families. Funds ride the per-Sim details channel (SimDetailsWire, APPLY_SIM_DETAILS) of the claimed Sims, so a family reaches the clients while a player is on one of its Sims (first run 20261021-225010: 4134 to 3984 on all three games)",
+  "clients": [
+    1,
+    2
+  ],
+  "household": [
+    "Jennifer",
+    "Pablo",
+    "Iliana"
+  ],
+  "start": "langeraks",
+  "player2": "Iliana",
+  "steps": [
+    "households:Martinez Langerak",
+    "probe:server:scratch/HouseholdChargeProbe.cs",
+    "sleep:10"
+  ],
+  "after": [
+    "households:Martinez Langerak"
+  ],
+  "expect": "pass"
+}

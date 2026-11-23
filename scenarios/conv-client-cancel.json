@@ -1,0 +1,36 @@
+{
+  "name": "conv-client-cancel",
+  "summary": "round 3 (defect 2): Jennifer and Iliana talk on the server (the engine's own conversation); on client 1 the HUD's cancel of Jennifer's conversation item (InteractionQueue.CancelSocializing, as HudModel.CancelSocializing runs it) reaches the engine's leave path on the Cv replay's conversation: it must not throw (that conversation has no SocialGroupSituation) and the client must keep showing the server's conversation until the stream ends it",
+  "clients": [
+    1
+  ],
+  "household": [
+    "Jennifer",
+    "Pablo",
+    "Iliana",
+    "Gunther"
+  ],
+  "start": "park",
+  "steps": [
+    "probe:server:scratch/ConvPairProbe.cs",
+    "sleep:4",
+    "probe:1:scratch/ConversationProbe.cs",
+    "probe:1:scratch/ConvHudCancelProbe.cs",
+    "sleep:2",
+    "probe:1:scratch/ConversationProbe.cs",
+    "probe:server:scratch/ConversationProbe.cs"
+  ],
+  "watch": {
+    "sims": [
+      "Jennifer",
+      "Iliana"
+    ],
+    "seconds": 60
+  },
+  "after": [
+    "assert:client:probe scratch/ConversationProbe.cs:convs\\s*=\\s*Gunther:none,Iliana:Iliana[+]Jennifer,Jennifer:Iliana[+]Jennifer,",
+    "assert:server:probe scratch/ConversationProbe.cs:convs\\s*=\\s*Gunther:none,Iliana:Iliana[+]Jennifer,Jennifer:Iliana[+]Jennifer,",
+    "assert:server:probe scratch/ConvEndProbe.cs:ok\\s*=\\s*true"
+  ],
+  "expect": "pass"
+}

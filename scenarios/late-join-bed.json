@@ -1,0 +1,25 @@
+{
+  "name": "late-join-bed",
+  "summary": "The client joins while Pablo relaxes in bed (server paused meanwhile), then Pablo gets up",
+  "steps": [
+    "act:Pablo near:Bed EnterRelaxing --name Relax --wait 60",
+    "sleep:15",
+    "rejoin:paused",
+    "sleep:15",
+    "act:Pablo --clear --stand",
+    "sleep:12"
+  ],
+  "watch": {
+    "sims": [
+      "Pablo"
+    ],
+    "seconds": 30,
+    "from": "act:Pablo --clear --stand"
+  },
+  "after": [
+    "sims:Pablo --machines",
+    "capture:Pablo:2",
+    "diag"
+  ],
+  "expect": "pass"
+}

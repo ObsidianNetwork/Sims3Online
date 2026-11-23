@@ -1,0 +1,19 @@
+{
+  "name": "sting-owner",
+  "summary": "A career sting for Jennifer through the game's own Sim.ShowTNSAndPlayStingIfSelectable (scratch/StingProbe.cs): only her player (client 1) plays it, as a remote dialog of kind Sting; player 2 does not",
+  "clients": [
+    1,
+    2
+  ],
+  "steps": [
+    "probe:server:scratch/StingProbe.cs",
+    "sleep:4"
+  ],
+  "after": [
+    "rose:server:SACS_RECORDER status:stingsSent",
+    "assert:client1:SACS_REPLAY 00:stingsPlayed:[1-9]",
+    "assert:client1:DIALOG_AUTOANSWER:Sting:sting_career_positive",
+    "assert:client2:SACS_REPLAY 00:stingsPlayed:0[^0-9]"
+  ],
+  "expect": "pass"
+}

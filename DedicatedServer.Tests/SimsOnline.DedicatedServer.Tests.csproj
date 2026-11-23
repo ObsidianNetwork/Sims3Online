@@ -1,0 +1,119 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>SimsOnline.DedicatedServer.Tests</AssemblyName>
+    <RootNamespace>SimsOnline.DedicatedServer.Tests</RootNamespace>
+    <DefineConstants>$(DefineConstants);CARD55_PURE</DefineConstants>
+    <!-- The gameplay-fork hook sources are a maintainer-local cache (ignored by .gitignore), so the
+         tests that exercise AuthorityHook compile only when that cache is present. -->
+    <OmoForkHooksDir>$(MSBuildThisFileDirectory)..\.omo\cache\fork\gameplay_02_cs73\SimsOnlineHooks</OmoForkHooksDir>
+  </PropertyGroup>
+  <PropertyGroup Condition="Exists('$(OmoForkHooksDir)\AuthorityHook.cs')">
+    <DefineConstants>$(DefineConstants);OMO_FORK_HOOKS</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup Condition="Exists('$(OmoForkHooksDir)\AuthorityHook.cs')">
+    <Compile Include="$(OmoForkHooksDir)\AuthorityHook.cs" Link="Linked\AuthorityHook.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\DedicatedServer\SimsOnline.DedicatedServer.csproj" />
+    <!-- card 57 ruling 4: the public protocol types live in SimsOnline.Protocol. -->
+    <ProjectReference Include="..\SimsOnline.Protocol\SimsOnline.Protocol.csproj" />
+    <!-- Wave 7: the Rust sidecar round-trip tests are NUnit/VSTest (the sibling
+         DedicatedServer.Tests.csproj, discovered by the authority harness
+         A2 probe as a scoped `dotnet test` with the Sidecar name filter). This reflection runner
+         carries no NUnit reference, so that file must stay out of its default compile items. -->
+    <Compile Remove="RustAuthoritySidecarTests.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- source-link the mod's PURE autonomy-gate state machine so the gate tests exercise
+         the exact decision logic that runs in the .NET 2 mod. The file is C#2-only and self-guards
+         with #nullable disable; it must stay valid under both csc 2.0 (mod build) and net8.0. -->
+    <Compile Include="..\SimsOnlineServerHostMod\AutonomyCommandGate.cs" Link="Linked\AutonomyCommandGate.cs" />
+    <Compile Include="..\SimsOnline.Client\ClientClaimControl.cs" Link="Linked\ClientClaimControl.cs" />
+    <!-- source-link the mod's PURE client-capture forward predicate so the capture-filter
+         tests exercise the exact allowlist that runs in the .NET 2 mod's OnActiveActorQueueChanged.
+         C#2-only, no engine types; valid under both csc 2.0 (mod build) and net8.0. -->
+    <Compile Include="..\SimsOnlineServerHostMod\ClientCaptureFilter.cs" Link="Linked\ClientCaptureFilter.cs" />
+    <!-- source-link the mod's PURE unclaimed-routing emit-membership predicate so its
+         tests exercise the exact decision that runs in the .NET 2 mod's PollUnclaimedRoutingEmit.
+         C#2-only, no engine types; valid under both csc 2.0 (mod build) and net8.0. -->
+    <Compile Include="..\SimsOnlineServerHostMod\UnclaimedRoutingEmitFilter.cs" Link="Linked\UnclaimedRoutingEmitFilter.cs" />
+    <!-- RoutingInteractionFilter, TerminalInteractionFilter, SitTransitionEmitFilter and
+         the other mod files linked in SimsOnline.DedicatedServer.csproj are compiled into that assembly;
+         tests use the referenced assembly copy to avoid CS0436 duplicate-type warnings. -->
+    <!-- source-link the mod's PURE outbound two-lane policy so the lane-ordering tests
+         exercise the exact priority-first dequeue that runs in the .NET 2 mod's SendLine/SendLines
+         pump (under sSendLock). C#2-only, no engine types; valid under both csc 2.0 (mod build) and
+         net8.0. -->
+    <Compile Include="..\SimsOnlineServerHostMod\OutboundLaneQueue.cs" Link="Linked\OutboundLaneQueue.cs" />
+    <Compile Include="..\SimsOnlineServerHostMod\ReplaySetupCache.cs" Link="Linked\ReplaySetupCache.cs" />
+    <Compile Include="..\SimsOnlineServerHostMod\SacsRequestTrace.cs" Link="Linked\SacsRequestTrace.cs" />
+    <!-- B1: the RepairOwnMachines caller labels the motion watch attributes a client restart to. -->
+    <Compile Include="..\SimsOnlineServerHostMod\RepairLabel.cs" Link="Linked\RepairLabel.cs" />
+    <!-- B2+(a): the replay's first request for a state a repair entered, dropped before the SACS pump took it. -->
+    <Compile Include="..\SimsOnlineServerHostMod\RepairEntryGate.cs" Link="Linked\RepairEntryGate.cs" />
+    <!-- B2: the repair's entry for a puppet's dead standing idle, and the stream's latest state per driver. -->
+    <Compile Include="..\SimsOnlineServerHostMod\IdleRepairPlan.cs" Link="Linked\IdleRepairPlan.cs" />
+    <Compile Include="..\SimsOnlineServerHostMod\ReplayDriverBootstrap.cs" Link="Linked\ReplayDriverBootstrap.cs" />
+    <!-- the presentation module's late-join settle gates, including drift after a long entry clip. -->
+    <Compile Include="..\SimsOnlineServerHostMod\Presentation\JoinSettlePlan.cs" Link="Linked\JoinSettlePlan.cs" />
+    <Compile Include="..\SimsOnlineServerHostMod\ReplayStateCache.cs" Link="Linked\ReplayStateCache.cs" />
+    <Compile Include="..\SimsOnlineServerHostMod\ParamAuthority.cs" Link="Linked\ParamAuthority.cs" />
+    <Compile Include="..\SimsOnlineServerHostMod\DriverIntroduction.cs" Link="Linked\DriverIntroduction.cs" />
+    <Compile Include="..\SimsOnlineServerHostMod\WalkerCopyLine.cs" Link="Linked\WalkerCopyLine.cs" />
+    <Compile Include="..\SimsOnlineServerHostMod\WalkHaltTiming.cs" Link="Linked\WalkHaltTiming.cs" />
+    <Compile Include="..\SimsOnlineServerHostMod\RouteLegIndex.cs" Link="Linked\RouteLegIndex.cs" />
+    <Compile Include="..\SimsOnlineServerHostMod\LineKindCounts.cs" Link="Linked\LineKindCounts.cs" />
+    <!-- source-link where SET_WORLD_TIME moves the clock (nearest week, same minute left alone). -->
+    <Compile Include="..\SimsOnlineServerHostMod\WorldClockSet.cs" Link="Linked\WorldClockSet.cs" />
+    <!-- source-link the mod's select guard (a replay on the client never moves the player's selection). -->
+    <Compile Include="..\SimsOnlineServerHostMod\SelectionGuard.cs" Link="Linked\SelectionGuard.cs" />
+    <!-- part A: source-link the Iv inventory line (format, parse, diff). -->
+    <Compile Include="..\SimsOnlineServerHostMod\InventorySet.cs" Link="Linked\InventorySet.cs" />
+    <!-- part A step 3: source-link the Rf refusal line (format, parse, the client's key). -->
+    <Compile Include="..\SimsOnlineServerHostMod\MenuRefusal.cs" Link="Linked\MenuRefusal.cs" />
+    <!-- part A (b): source-link the Us object-use line (format, parse, the client's reconcile). -->
+    <Compile Include="..\SimsOnlineServerHostMod\ObjectUse.cs" Link="Linked\ObjectUse.cs" />
+    <!-- source-link the Rl relationship line (liking, STC and the long-term state and bits). -->
+    <Compile Include="..\SimsOnlineServerHostMod\RelationshipState.cs" Link="Linked\RelationshipState.cs" />
+    <!-- source-link the Cv conversation line (members, turns, topics). -->
+    <Compile Include="..\SimsOnlineServerHostMod\ConversationState.cs" Link="Linked\ConversationState.cs" />
+    <!-- Phase 2b: source-link the mod's PURE binary snapshot writer so the SNAPSHOT2
+         round-trip tests exercise the exact encoder that runs in the .NET 2 mod.
+         C#2-only, no engine types; valid under both csc 2.0 (mod build) and net8.0. -->
+    <Compile Include="..\SimsOnlineServerHostMod\Snapshot2Writer.cs" Link="Linked\Snapshot2Writer.cs" />
+    <!-- Bridge framing parity: the mod's own shared-region layout and CRC32, so the BridgeShared.Mod*
+         tests compare them with the controller's copies in DedicatedServer/HostBridge. Both files are
+         C#2 with no engine types. -->
+    <Compile Include="..\SimsOnlineServerHostMod\BridgeSharedRegionLayout.cs" Link="Linked\BridgeSharedRegionLayout.cs" />
+    <Compile Include="..\SimsOnlineServerHostMod\BridgeCrc32.cs" Link="Linked\BridgeCrc32.cs" />
+    <!-- P5.6: source-link MirrorCoordinator from SimsOnline.Client so RunAsync / Merge
+         tests exercise the exact drain-fold-dispatch logic without a subprocess. -->
+    <Compile Include="..\SimsOnline.Client\MirrorCoordinator.cs" Link="Linked\MirrorCoordinator.cs" />
+    <!-- source-link the client's receive queue so its order, error and watchdog tests run in-process. -->
+    <Compile Include="..\SimsOnline.Client\ReceiveQueue.cs" Link="Linked\ReceiveQueue.cs" />
+    <!-- The client's drain-loop timers (read-book flushes), tested with the coordinator they post to. -->
+    <Compile Include="..\SimsOnline.Client\CoordinatorTimers.cs" Link="Linked\CoordinatorTimers.cs" />
+    <!-- close-out: the client's order-completion final-position plan, tested pure. -->
+    <Compile Include="..\SimsOnline.Client\OrderCompletionReassert.cs" Link="Linked\OrderCompletionReassert.cs" />
+    <!-- The mod's swallowed-error counter and its DIAG_STATE field. C#2-only, no engine types; valid under both csc 2.0
+         (mod build) and net8.0. -->
+    <Compile Include="..\SimsOnlineServerHostMod\SwallowedErrors.cs" Link="Linked\SwallowedErrors.cs" />
+    <!-- card 55: the RouteCtor seam's Rust-plan decision, plan store and planner-entry census. C#2-only, no engine types. -->
+    <Compile Include="..\SimsOnlineServerHostMod\RustRoutePlan.cs" Link="Linked\RustRoutePlan.cs" />
+    <Compile Include="..\SimsOnlineServerHostMod\RustRoadPlace.cs" Link="Linked\RustRoadPlace.cs" />
+    <Compile Include="..\SimsOnlineServerHostMod\RustPrivateNavigation.cs" Link="Linked\RustPrivateNavigation.cs" />
+    <Compile Include="..\SimsOnlineServerHostMod\ClientBoundaryRoute.cs" Link="Linked\ClientBoundaryRoute.cs" />
+    <Compile Include="..\SimsOnlineServerHostMod\RustLiveSimNavBuilder.cs" Link="Linked\RustLiveSimNavBuilder.cs" />
+  </ItemGroup>
+  <!-- P5.6: MirrorCoordinator.cs needs SimsOnline.Client namespace; the test project already references
+       SimsOnline.DedicatedServer which provides MirrorEngine, IMirrorHost, Protocol types. -->
+  <ItemGroup>
+    <Using Include="SimsOnline.Client" />
+    <Using Include="SimsOnlineServerHost" />
+    <!-- The mod and the controller both name these types (linked above); in the tests the plain name
+         means the controller's, and the parity tests spell out SimsOnlineServerHost.* for the mod's. -->
+    <Using Include="SimsOnline.DedicatedServer.HostBridge.BridgeSharedRegionLayout" Alias="BridgeSharedRegionLayout" />
+    <Using Include="SimsOnline.DedicatedServer.HostBridge.BridgeCrc32" Alias="BridgeCrc32" />
+  </ItemGroup>
+</Project>

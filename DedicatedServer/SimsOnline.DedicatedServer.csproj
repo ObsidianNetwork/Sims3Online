@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <!-- SimLinkShadowReader.ClaimUnread: compare-and-swap on the shared ring's read position. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AssemblyName>SimsOnline.DedicatedServer</AssemblyName>
+    <RootNamespace>SimsOnline.DedicatedServer</RootNamespace>
+    <Description>Authoritative dedicated server controller for SimsOnline (The Sims 3 multiplayer mod).</Description>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)' == 'Release' And '$(SENTRY_AUTH_TOKEN)' != '' And '$(SENTRY_ORG)' != '' And '$(SENTRY_PROJECT)' != ''">
+    <SentryOrg>$(SENTRY_ORG)</SentryOrg>
+    <SentryProject>$(SENTRY_PROJECT)</SentryProject>
+    <SentryUploadSymbols>true</SentryUploadSymbols>
+    <SentryUploadSources>true</SentryUploadSources>
+    <SentryCreateRelease Condition="'$(SENTRY_RELEASE)' != ''">true</SentryCreateRelease>
+    <SentrySetCommits Condition="'$(SENTRY_RELEASE)' != ''">true</SentrySetCommits>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\SimsOnlineServerHostMod\TerminalInteractionFilter.cs" Link="Linked\TerminalInteractionFilter.cs" />
+    <Compile Include="..\SimsOnlineServerHostMod\RoutingInteractionFilter.cs" Link="Linked\RoutingInteractionFilter.cs" />
+    <Compile Include="..\SimsOnlineServerHostMod\SitTransitionEmitFilter.cs" Link="Linked\SitTransitionEmitFilter.cs" />
+    <Compile Include="..\SimsOnlineServerHostMod\InteractionReplayApplySorter.cs" Link="Linked\InteractionReplayApplySorter.cs" />
+    <Compile Include="..\SimsOnlineServerHostMod\SimScopeWire.cs" Link="Linked\SimScopeWire.cs" />
+    <Compile Include="..\SimsOnlineServerHostMod\SimStateWire.cs" Link="Linked\SimStateWire.cs" />
+    <Compile Include="..\SimsOnlineServerHostMod\SimDetailsWire.cs" Link="Linked\SimDetailsWire.cs" />
+    <Compile Include="..\SimsOnlineServerHostMod\SimAliasWire.cs" Link="Linked\SimAliasWire.cs" />
+    <Compile Include="..\SimsOnlineServerHostMod\SimPresenceWire.cs" Link="Linked\SimPresenceWire.cs" />
+    <Compile Include="..\SimsOnlineServerHostMod\UserIntentWire.cs" Link="Linked\UserIntentWire.cs" />
+    <!-- the mod's line-kind counts, so PresentationSentCounts counts kinds as the mod does at both ends. -->
+    <Compile Include="..\SimsOnlineServerHostMod\LineKindCounts.cs" Link="Linked\LineKindCounts.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- card 57 ruling 4: the public protocol types and JSON codec live in SimsOnline.Protocol. -->
+    <ProjectReference Include="..\SimsOnline.Protocol\SimsOnline.Protocol.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Sentry" Version="6.12.1" />
+    <PackageReference Include="Sentry.Profiling" Version="6.12.1" />
+  </ItemGroup>
+</Project>

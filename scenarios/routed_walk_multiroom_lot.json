@@ -1,0 +1,34 @@
+{
+  "name": "routed_walk_multiroom_lot",
+  "summary": "BLOCKED: Card 55 needs measured in-memory internal documentation topology, fixed measured start and goal cells, trusted installation, owner-gated gameplay routing, typed portal execution and both-client receipts. The saved library approximation is inferred and is not accepted live input. No runtime executors are registered; the preflight must stop before reset. Home is not a measured library start. E1-E5 selectors request scoped measurements, not successful textual assertions.",
+  "clients": [
+    1,
+    2
+  ],
+  "start": "home",
+  "steps": [
+    "claim-sim:Jennifer",
+    "rust-env:SIMSONLINE_RUST_ROUTE=1",
+    "load-simnav:memory",
+    "navigate_astar:Jennifer start=measured_library_start_UNAVAILABLE goal=measured_upper_cell_UNAVAILABLE",
+    "navigate_astar:Jennifer goal=measured_cross_lot_cell_UNAVAILABLE"
+  ],
+  "watch": {
+    "sims": [
+      "Jennifer"
+    ],
+    "seconds": 120,
+    "events": true
+  },
+  "after": [
+    "rust-evidence:E1",
+    "rust-evidence:E2",
+    "rust-evidence:E3",
+    "rust-evidence:E4",
+    "rust-evidence:E5",
+    "continuity",
+    "nonotice:1:Can't do",
+    "nonotice:2:Can't do"
+  ],
+  "expect": "pass"
+}

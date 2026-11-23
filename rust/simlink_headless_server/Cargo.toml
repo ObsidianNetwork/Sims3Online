@@ -1,0 +1,59 @@
+[package]
+name = "simlink_headless_server"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "card 57: the Rust headless server binary and the public line protocol v1 codec (oracle: DedicatedServer + docs/protocol.md)"
+
+# Its own Cargo workspace, independent of both crates it depends on (card 57 §A;
+# card 56 §A already declares [workspace] for the kernel and the bridge).
+[workspace]
+
+[features]
+default = ["repo-integration"]
+# PC repository contracts need files deliberately absent from clean-room exports.
+repo-integration = []
+# Local-only navigation vectors are excluded from clean-room checkouts.
+private-fixtures = []
+# Opt-in phase timing only; never changes the join counter or wire events.
+join-gap-trace = []
+
+[[test]]
+name = "card58_trace"
+path = "tests/card58_trace.rs"
+required-features = ["repo-integration"]
+
+[[test]]
+name = "scorecard"
+path = "tests/scorecard.rs"
+required-features = ["repo-integration"]
+
+[[test]]
+name = "private_navigation"
+path = "tests/private_navigation.rs"
+required-features = ["private-fixtures"]
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "simlink_headless_server"
+path = "src/main.rs"
+
+# Card 57 §A: the daemon takes BOTH crates as path dependencies. The kernel must never gain a
+# dependency on simlink_bridge (§J); that rule lives in the kernel, not here.
+[dependencies]
+simlink_bridge = { path = "../simlink_bridge" }
+sim96_kernel_cleanroom = { path = "../sim96_kernel_cleanroom" }
+ctrlc = "3"
+mio = { version = "1", features = ["net", "os-poll"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Card 57 §A: #![forbid(unsafe_code)] in every file and this lint; the program's only unsafe stays
+# in simlink_bridge/src/ffi.rs. Card 57 §H gate 1: clippy all = "deny".
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = "deny"

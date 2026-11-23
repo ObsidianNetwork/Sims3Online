@@ -1,0 +1,50 @@
+{
+  "name": "park-walk",
+  "summary": "stage 2: from their own homes, player 1's Jennifer (Martinez home, 164 m away) and player 2's Iliana (14 Sierra Tango Street, 319 m away) each go to Central Park with the game's own GoToLot; every game shows each Sim arriving on the park lot, and the motion watch's events say whether the game walked or drove (GetInVehicle, SittingInVehicle)",
+  "clients": [
+    1,
+    2
+  ],
+  "household": [
+    "Jennifer",
+    "Pablo",
+    "Iliana"
+  ],
+  "start": {
+    "Iliana": [
+      1257.3,
+      1206.0,
+      0.0,
+      1.0
+    ]
+  },
+  "player2": "Iliana",
+  "steps": [
+    "act:Jennifer lot:9038443088839058560 GoToLot --clear --wait 30",
+    "act:Iliana lot:9038443088839058560 GoToLot --clear --wait 30",
+    "until:server:Jennifer:^(?:[^|]*\\|){2}9038443088839058560\\|:300",
+    "until:server:Iliana:^(?:[^|]*\\|){2}9038443088839058560\\|:300",
+    "until:server:Jennifer:^(?:[^|]*\\|){9}(?![^|]*GoToLot):90",
+    "until:server:Iliana:^(?:[^|]*\\|){9}(?![^|]*GoToLot):90",
+    "until:client1:Jennifer:^(?:[^|]*\\|){2}{server:2}\\|(?:[^|]*\\|){13}0\\|:30",
+    "until:client1:Iliana:^(?:[^|]*\\|){2}{server:2}\\|(?:[^|]*\\|){13}0\\|:30",
+    "until:client2:Jennifer:^(?:[^|]*\\|){2}{server:2}\\|(?:[^|]*\\|){13}0\\|:30",
+    "until:client2:Iliana:^(?:[^|]*\\|){2}{server:2}\\|(?:[^|]*\\|){13}0\\|:30",
+    "sleep:4"
+  ],
+  "watch": {
+    "sims": [
+      "Jennifer",
+      "Iliana"
+    ],
+    "seconds": 600,
+    "events": true
+  },
+  "after": [
+    "sims:Jennifer Iliana --machines",
+    "nonotice:1:Can't do",
+    "nonotice:2:Can't do",
+    "drivers"
+  ],
+  "expect": "known-failing: GoToLot drives for a far lot and vehicle presentation is open; this run says whether 164 m and 319 m are walks or drives. Tickets: (vehicle presentation), ."
+}

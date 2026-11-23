@@ -1,0 +1,35 @@
+{
+  "name": "two-paper-refused",
+  "summary": "A newspaper the server makes a metre in front of Pablo and makes old (PaperPlaceProbe, the game's own CreateObject and Newspaper.MakeOld; its id is the step variable {paper}) reaches player 2 as a copy that is not old (Newspaper.IsReadable is !mIsOld; the stream does not carry the flag), so player 2's menu on it offers the chooser's entries (Check Weather, Find a Job and the rest) that the server refuses. Player 2 picks Check Weather: the pick reaches the server under the server's id, the server refuses it and greys the definition's other refused entries with it (Rf lines), and player 2's menu must then show Check Weather greyed (first menudiff: the picked entry) and none of the others as runnable (second: the server matched the pick, so it held the siblings too) (the fork's menu-refusal slice greys them). The server's paper is then made new: the server clears the refusals and both menus must agree with every entry runnable (no stale grey). The paper is made old again at the end",
+  "clients": [
+    1,
+    2
+  ],
+  "steps": [
+    "probe:server:scratch/PaperPlaceProbe.cs",
+    "sleep:3",
+    "probe:server:scratch/PaperStateProbe.cs",
+    "cpick:2:id:{paper} GetNewspaperChooser --name Weather",
+    "notice:2:20:Can't do",
+    "sleep:3",
+    "menudiff:2:Pablo:id:{paper}:only=Weather",
+    "menudiff:2:Pablo:id:{paper}",
+    "probe:server:scratch/PaperFreshProbe.cs",
+    "sleep:6",
+    "menudiff:2:Pablo:id:{paper}",
+    "probe:server:scratch/PaperOldProbe.cs"
+  ],
+  "watch": {
+    "sims": [
+      "Jennifer",
+      "Pablo"
+    ],
+    "seconds": 90,
+    "events": true
+  },
+  "after": [
+    "nonotice:1:Can't do",
+    "sims:Jennifer Pablo --props"
+  ],
+  "expect": "pass"
+}

@@ -1,0 +1,20 @@
+{
+  "name": "sleep-bed",
+  "summary": "Pablo goes to bed and sleeps",
+  "steps": [
+    "act:Pablo near:Bed BedSleep --name Sleep --wait 60",
+    "sleep:15"
+  ],
+  "watch": {
+    "sims": [
+      "Pablo"
+    ],
+    "seconds": 40,
+    "capture": true
+  },
+  "after": [
+    "sims:Pablo --machines",
+    "capture:Pablo:2"
+  ],
+  "expect": "pass"
+}

@@ -1,0 +1,34 @@
+{
+  "name": "two-hud-server-away",
+  "summary": "two-hud with the server's camera on the empty bedroom, as a dedicated server's camera is away from the players' Sims; both players' cameras stay on the household",
+  "clients": [
+    1,
+    2
+  ],
+  "steps": [
+    "camera:server:1139.3,984.8",
+    "cpick:1:ChairDining Sit --near Jennifer",
+    "cpick:2:Loveseat Sit",
+    "hud:1:10:actor=Jennifer[^;]*; hudQueue=1;",
+    "hud:2:10:actor=Pablo[^;]*; hudQueue=1;",
+    "cpick:2:--cancel 0",
+    "until:server:Pablo:^(?:[^|]*\\|){9}(?![^|]*Sit):20",
+    "hud:2:15:actor=Pablo[^;]*; hudQueue=0;",
+    "until:server:Jennifer:SittingPosture:45",
+    "sleep:4"
+  ],
+  "watch": {
+    "sims": [
+      "Jennifer",
+      "Pablo"
+    ],
+    "seconds": 120
+  },
+  "after": [
+    "sims:Jennifer Pablo --machines",
+    "nonotice:1:Can't do",
+    "nonotice:2:Can't do",
+    "drivers"
+  ],
+  "expect": "pass"
+}

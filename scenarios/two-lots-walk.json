@@ -1,0 +1,36 @@
+{
+  "name": "two-lots-walk",
+  "summary": "Pablo walks from the home lot to 14 Sierra Tango Street and back: both clients show the walk, the copy on the lot the server's Sim is on, drawn, with no snap",
+  "clients": [
+    1,
+    2
+  ],
+  "steps": [
+    "act:Pablo lot:7787005346371421056 GoToLot --clear --wait 30",
+    "until:server:Pablo:^(?:[^|]*\\|){2}7787005346371421056\\|:240",
+    "until:client1:Pablo:^(?:[^|]*\\|){2}7787005346371421056\\|:30",
+    "until:client2:Pablo:^(?:[^|]*\\|){2}7787005346371421056\\|:30",
+    "until:server:Pablo:^(?:[^|]*\\|){9}(?![^|]*GoToLot):60",
+    "capture:Pablo:2",
+    "sleep:5",
+    "act:Pablo lot:home GoToLot --wait 30",
+    "until:server:Pablo:^(?:[^|]*\\|){2}7787005350115303920\\|(?:[^|]*\\|){6}(?![^|]*GoToLot):240",
+    "until:client1:Pablo:^(?:[^|]*\\|){2}{server:2}\\|:30",
+    "until:client2:Pablo:^(?:[^|]*\\|){2}{server:2}\\|:30",
+    "sleep:5"
+  ],
+  "watch": {
+    "sims": [
+      "Pablo",
+      "Jennifer"
+    ],
+    "seconds": 540
+  },
+  "after": [
+    "sims:Pablo Jennifer --machines",
+    "nonotice:1:Can't do",
+    "nonotice:2:Can't do",
+    "drivers"
+  ],
+  "expect": "known-failing: GoToLot drives: the server's Pablo gets in a vehicle (GetInVehicleRouteAction, SittingInVehicle.Idle) and moves at 15 to 26 m/s, and the client's copy jumps up to 145 m in half a second by 'mirror posture snap' during the drive (run 20261021-222834, scenarios.py explain two-lots-walk, 2026-10-21) Tickets: (vehicle presentation), ."
+}

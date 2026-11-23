@@ -1,0 +1,22 @@
+{
+  "name": "walker-copy-rejoin",
+  "summary": "Pablo relaxes in bed, the input log runs on both games and the client rejoins warm: every driver it meets again mid-life must get the server's walker counters (AW| lines out, applied, none failed) instead of counting from 0; sacs_picks randoms afterwards gives the residual per walker",
+  "steps": [
+    "act:Pablo near:Bed EnterRelaxing --name Relax --wait 60",
+    "server:SACS_RECORDER tune sacs.random-log 1",
+    "client:SACS_RECORDER tune sacs.random-log 1",
+    "sleep:5",
+    "rejoin:warm",
+    "sleep:30",
+    "server:SACS_RECORDER tune sacs.random-log default",
+    "client:SACS_RECORDER tune sacs.random-log default"
+  ],
+  "after": [
+    "rose:server:SACS_RECORDER walker-status:awLines",
+    "rose:client:SACS_RECORDER walker-status:awApplied",
+    "rose:client:SACS_RECORDER walker-status:awWritten",
+    "assert:client:SACS_RECORDER walker-status:awFailed=0(?!\\d)",
+    "assert:client:SACS_RECORDER walker-status:awMalformed=0(?!\\d)"
+  ],
+  "expect": "pass"
+}

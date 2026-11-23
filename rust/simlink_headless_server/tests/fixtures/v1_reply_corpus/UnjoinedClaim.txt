@@ -1,0 +1,1 @@
+CMD|41|ClaimSim|41|7|9	ERR|41|NotJoined|ClaimSim|

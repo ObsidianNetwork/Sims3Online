@@ -1,0 +1,20 @@
+{
+  "name": "phone-standing",
+  "summary": "Jennifer browses the web on her phone, standing (the SACS bridge hand-off)",
+  "steps": [
+    "act:Jennifer inv:PhoneSmart BrowseTheWeb --wait 40",
+    "sleep:6"
+  ],
+  "watch": {
+    "sims": [
+      "Jennifer"
+    ],
+    "seconds": 22,
+    "capture": true
+  },
+  "after": [
+    "sims:Jennifer --machines --props",
+    "capture:Jennifer:2"
+  ],
+  "expect": "pass"
+}

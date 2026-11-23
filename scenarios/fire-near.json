@@ -1,0 +1,17 @@
+{
+  "name": "fire-near",
+  "summary": "A fire starts 3.5 m in front of Jennifer: the client shows its flames where the server's are, and the burnt floor (a lot-keyed Wl line, seam-gaps row 5); out after 8 s",
+  "steps": [
+    "act:Jennifer --fire start:3.5",
+    "capture:Jennifer:3",
+    "sleep:4",
+    "act:--fire out",
+    "sleep:4"
+  ],
+  "after": [
+    "capture:Jennifer:1",
+    "assert:client:SACS_REPLAY 00:standIns:0/",
+    "assert:client:SACS_REPLAY 00:world=installed:\\d,lines:\\d+,client:applied:\\d+/failed:\\d+/walking:\\d+/lots:[1-9]"
+  ],
+  "expect": "pass"
+}

@@ -1,0 +1,73 @@
+[package]
+name = "sim96_kernel_cleanroom"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+# The wave7 p99 budgets (card 39) gate `cargo run` itself, so the dev profile
+# must execute with realistic codegen; debugopt (opt-level=2, assertions kept)
+# is what the shipped budget evidence was measured against.
+[profile.dev]
+opt-level = 2
+
+[lib]
+path = "src/lib.rs"
+
+[features]
+# The git-ignored ABI oracles src/routing.rs and src/sacs_rng.rs, and the native
+# canaries that need them. Off by default so a fresh clone builds and tests;
+# build.rs also turns the oracle build on when both files exist, unless
+# SIM96_FORCE_DEFAULT_KERNEL=1 (docs/dev-tools.md).
+private-oracles = []
+
+# Local-only navigation vectors are excluded from clean-room checkouts.
+private-fixtures = []
+
+[[test]]
+name = "private_navigation"
+path = "tests/private_navigation.rs"
+required-features = ["private-fixtures"]
+
+# Card 51 §E authoring tool: compiles a canonical .simnav.json to SIMNAV01.
+# Outside src/bin because the repo-wide `**/bin/` ignore rule covers that path.
+[[bin]]
+name = "simnav_compile"
+path = "tools/simnav_compile.rs"
+
+[[bin]]
+name = "simroad_compile"
+path = "tools/simroad_compile.rs"
+
+[[bin]]
+name = "canary_probe"
+path = "tools/canary_probe.rs"
+required-features = ["private-oracles"]
+
+[[bin]]
+name = "expansion_probe"
+path = "tools/expansion_probe.rs"
+required-features = ["private-oracles"]
+
+[[bin]]
+name = "simlink_authority_daemon"
+path = "tools/simlink_authority_daemon.rs"
+
+[[bin]]
+name = "wave10_rc_campaign_probe"
+path = "tools/wave10_rc_campaign_probe.rs"
+
+[[bin]]
+name = "wave7_scenario_probe"
+path = "tools/wave7_scenario_probe.rs"
+
+[[bin]]
+name = "wave8_alpha_readiness_probe"
+path = "tools/wave8_alpha_readiness_probe.rs"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = "deny"

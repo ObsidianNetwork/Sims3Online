@@ -1,0 +1,23 @@
+<Project>
+  <!--
+    Shared settings for the five .NET 8 projects of the stack: SimsOnline.DedicatedServer, SimsOnline.Client,
+    SimsOnline.TestClient, SimsOnline.DedicatedServer.Tests and SimsOnline.Protocol. They are named here so that nothing
+    not pick up ImplicitUsings or Nullable. A new .NET 8 project of the stack adds its name to the condition.
+    The in-game mods are compiled by csc from PowerShell scripts and never read this file.
+  -->
+  <PropertyGroup>
+    <SimsOnlineNet8Project Condition="'$(MSBuildProjectName)' == 'SimsOnline.DedicatedServer' Or '$(MSBuildProjectName)' == 'SimsOnline.Client' Or '$(MSBuildProjectName)' == 'SimsOnline.TestClient' Or '$(MSBuildProjectName)' == 'SimsOnline.DedicatedServer.Tests' Or '$(MSBuildProjectName)' == 'SimsOnline.Protocol'">true</SimsOnlineNet8Project>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(SimsOnlineNet8Project)' == 'true'">
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <Authors>Obsidian Network</Authors>
+    <Company>Obsidian Network</Company>
+    <RepositoryUrl>https://github.com/ObsidianNetwork/Sims3Online</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/ObsidianNetwork/Sims3Online</PackageProjectUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+  </PropertyGroup>
+</Project>

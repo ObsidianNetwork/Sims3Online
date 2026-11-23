@@ -1,0 +1,91 @@
+# Local game files and derived analysis
+/_analysis/
+/.omo/
+/.local/
+/.tools/
+/Backup/
+*.package
+*.sims3pack
+*.sims3
+/SimsOnlineServerHostMod/LoopVariantTable.g.cs
+
+# Build output
+**/bin/
+**/obj/
+/dist/
+/site/
+/.testbuild/
+/TestResults/
+/.vs/
+*.nupkg
+*.obj
+*.pch
+*.pdb
+*.sdf
+*.ipch
+*.idb
+*.ilk
+*.tlog
+*.suo
+*.user
+*.ncb
+*.opensdf
+*.opendb
+*.VC.db
+node_modules/
+
+# Python tooling
+__pycache__/
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+.coverage
+
+# Local credentials and signing material
+.env
+.env.*
+!.env.example
+*.pfx
+*.p12
+*.snk
+*.pem
+*.key
+**/credentials/*
+!/credentials/README.md
+**/signing/*
+!/signing/README.md
+
+# Local machine configuration and caches
+/AGENTS.local.md
+/.mcp.json
+/.codegraph/
+/.serena/
+/.claude/settings.local.json
+/.codex/
+*.log
+
+# Scratch experiments (tracked tooling remains tracked)
+/scratch/*
+
+# Rust build output
+rust/**/target*/
+tools/**/target*/
+
+# Maintainer-local experiments and caches (not part of the public repository)
+/.omo/
+
+# Sims 3 reference assemblies are not redistributed while rights are unverified.
+/refs/sims3/*.dll
+
+# Local agent-memory, transcript-retention, and usage-analysis utilities are not public project tooling.
+/scripts/supermemory_seed.js
+/scripts/transcript_purge.py
+/scripts/transcript_purge_test.py
+/tools/usage_burn.mjs
+/tools/token_audit/
+
+# Local agent/editor state (not part of the public repository)
+CLAUDE.md
+/.trail/
+/tools/agentbridge/
+/.vscode/

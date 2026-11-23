@@ -1,0 +1,31 @@
+{
+  "name": "two-chairs",
+  "summary": "Both players pick a dining chair at once, two different chairs: both Sims sit, on the server and in both games",
+  "clients": [
+    1,
+    2
+  ],
+  "steps": [
+    "cpick:1:ChairDining Sit --near Jennifer",
+    "cpick:2:ChairDining Sit --near Jennifer --rank 1",
+    "until:server:Jennifer:SittingPosture:45",
+    "until:server:Pablo:SittingPosture:45",
+    "sleep:6"
+  ],
+  "watch": {
+    "sims": [
+      "Jennifer",
+      "Pablo"
+    ],
+    "seconds": 90,
+    "capture": true
+  },
+  "after": [
+    "sims:Jennifer Pablo --machines",
+    "nonotice:1:Can't do",
+    "nonotice:2:Can't do",
+    "drivers",
+    "capture:Jennifer:2"
+  ],
+  "expect": "pass"
+}

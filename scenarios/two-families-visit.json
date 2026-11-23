@@ -1,0 +1,46 @@
+{
+  "name": "two-families-visit",
+  "summary": "Player 2's Iliana (Langerak), visiting the Martinezes' lot, introduces herself to player 1's Jennifer: the social runs and ends cleanly in both games, and both clients read the server's Martinez and Langerak funds and the Jennifer-Iliana relationship. Iliana starts there: her GoToLot to the Martinezes' home lot stayed queued and never started on the server (run 20261021-225010, and 60 s by hand)",
+  "clients": [
+    1,
+    2
+  ],
+  "household": [
+    "Jennifer",
+    "Pablo",
+    "Iliana"
+  ],
+  "start": {
+    "Iliana": [
+      1128.9,
+      989.9,
+      -0.25,
+      -0.97
+    ]
+  },
+  "player2": "Iliana",
+  "steps": [
+    "probe:server:scratch/ParkStrangersProbe.cs",
+    "probe:1:scratch/ParkStrangersProbe.cs",
+    "probe:2:scratch/ParkStrangersProbe.cs",
+    "cpick:2:sim:Jennifer SocialInteractionA --name Friendly",
+    "until:server:Iliana:SocialInteraction:45",
+    "until:server:Iliana:^(?:[^|]*\\|){9}(?![^|]*SocialInteraction):60",
+    "hud:2:15:actor=Iliana[^;]*; hudQueue=0;",
+    "sleep:4"
+  ],
+  "watch": {
+    "sims": [
+      "Iliana",
+      "Jennifer"
+    ],
+    "seconds": 150
+  },
+  "after": [
+    "sims:Iliana Jennifer --machines",
+    "households:Martinez Langerak --pair Jennifer+Iliana",
+    "nonotice:2:Can't do",
+    "drivers"
+  ],
+  "expect": "pass"
+}

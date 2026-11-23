@@ -1,0 +1,23 @@
+{
+  "name": "late-join-seated",
+  "summary": "The client joins while Pablo sits on the loveseat (server paused meanwhile)",
+  "steps": [
+    "act:Pablo near:Loveseat Sit --name Sit --wait 40",
+    "sleep:8",
+    "rejoin:paused",
+    "sleep:28"
+  ],
+  "watch": {
+    "sims": [
+      "Pablo"
+    ],
+    "seconds": 35,
+    "from": "sleep:28"
+  },
+  "after": [
+    "sims:Pablo --machines",
+    "capture:Pablo:2",
+    "diag"
+  ],
+  "expect": "known-failing: the joiner's history replays the sit-down from the seat (root motion is incremental from where a clip starts): the copy turns about 174 degrees and moves 0.56 m, and the join settle puts it back at the server's place 5 s after the join (the fork's seat settle then finds it 0.01 m off; position and facing match after it, 2026-10-21) Ticket: ."
+}

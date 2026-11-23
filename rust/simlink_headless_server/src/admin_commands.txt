@@ -1,0 +1,66 @@
+CONNECT <32-zero-hex>  (handshake; sent automatically)
+LOAD_SAVE <hexSaveName>
+LOAD_SAVE_MENU <hexSaveName>
+SAVE_GAME <hexSaveName>
+SET_GAME_SPEED <Pause|Normal|Double|Triple|Skip>
+SET_WORLD_TIME <day:0-6> <hours:0-23> <minutes:0-59>  (DEV-116 absolute clock; SimClockUtils.SetStartTime)
+REQUEST_SNAPSHOT [sinceTick]  (heavy: chunked, use @60)
+BULK_REF snapshot|snapshot-part|diag|probe-upload (v11 bulk metadata)
+QUEUE_INTERACTION <actorId> <hexKey> <targetId|0> <hasPos:0|1> <x> <y> <z>
+SET_ACTIVE_SIM <simId>
+CANCEL_INTERACTION <actorId> <interactionId>
+LEAVE_CONVERSATION <actorId>  (server role; the Sim leaves its conversation via the engine's own cancel)
+APPLY_INTERACTION_QUEUE <actorId> <hexKey> <targetId|0> <hasPos:0|1> <x> <y> <z> [hexParameters]  (client role)
+APPLY_INTERACTIONS <actor:hexKey:targetId:hasPos:x:y:z[:hexParameters]>;...  (client role; DEV-134 batched replays)
+APPLY_FORCE_ALIGN <actorId> <hexKey> <postureContainerId> <isTransition:0|1> [hexParameters]  (client role; DEV-136 seat/posture alignment)
+INJECT_CLICK <simId> <x> <y> <z>  (client role; synthesizes a UserDirected GoHere through the capture interceptor)
+INJECT_READ_INTENT <simId> <bookObjectId> <hexMode>  (client role; UserDirected chooser|getbook — DEV-143)
+DISABLE_AUTONOMY <simId> [cancelRunning:0|1]
+ENABLE_AUTONOMY <simId> [reset]
+GATE_AUTONOMY <simId>  (DEV-125: register claimed Sim for command-lifecycle autonomy gate)
+UNGATE_AUTONOMY <simId> [reset]  (DEV-125: clear the command-lifecycle gate on release/leave)
+SET_SIM_SCOPE <lotId,...|-> <simId,...|->  (server role; W1: player lots/Sims for the forked SimScopeHook)
+SET_AUTHORITY <off|observe|enforce> <ownedSimId,...|->  (client role; W2: forked client authority gate)
+PROBE_SIM_STATE <simId,...>  (W2 part B: motives + buffs of up to 8 Sims)
+APPLY_SIM_STATE <simId:m0,..,m5:guid/origin+...|->  (client role; W2 part B: set mirrored motives + buffs)
+SET_SIM_ALIASES <serverObjectId:simDescriptionId,...|-> [reset]  (client role; W2 identity: resolve server Sim ids by description)
+PROBE_SIM_PRESENCE [sinceSeq]  (W2 identity: journal of Sims entering/leaving the world; first call takes the baseline)
+SPAWN_SIM <serverObjectId> <simDescriptionId> <x> <y> <z>  (client role; W2 identity: instantiate the server's Sim)
+DESPAWN_SIM <serverObjectId> <simDescriptionId>  (client role; W2 identity: remove a Sim the server removed)
+PROBE_PRESENTATION [lotId,...|-] [simId,...|-]
+SACS_RECORDER on|off|status|ring-on|ring-off|dump [sinceSeq [simId,...]]|snapshot <simId,...>|snapshot-driver <handle> [offset]
+SACS_REPLAY <hexLines>  (client role; replay the server's recorded animation calls)
+APPLY_AUTONOMY <simId> <disabled:0|1>  (client role)
+SET_ROLE <server|client>
+APPLY_POSITION <simId> <x> <y> <z>  (client role)
+APPLY_POSITIONS <simId:x:y:z>;<simId:x:y:z>;...  (client role; DEV-124 batched, one frame N Sims)
+MERGE_LOT_STATE <lotId> <simId:x:y:z>;<simId:x:y:z>;...  (server role; DEV-149 slice 6 lot-boundary reconcile before SAVE_GAME)
+APPLY_MOTIVE <simId> <hexMotive> <value>  (client role)
+APPLY_CASH <householdId> <funds>  (client role)
+APPLY_SKILL <simId> <hexSkill> <level>  (client role)
+PROBE_SIM_STATUS <simId>
+PROBE_SIM_INTERACTION_QUEUE <simId>
+PROBE_SIM_MOTIVE <simId> <hexMotive>
+PROBE_SIM_SKILL <simId> <hexSkill>
+PROBE_SIM_AUTONOMY <simId>
+PROBE_HOUSEHOLD_CASH <householdId>
+PROBE_SIM_LIFECYCLE
+PROBE_ACTOR_LOOKUP
+PROBE_STATE_INJECTION <simId> <x> <y> <z>
+NOTIFY <hexText>  (in-game toast)
+NOTICES [sinceSeq]
+DIAG_STATE
+DIAG_CAPTURE_INTERACTION <simId>  (capture current interaction replay bundle fields)
+DIAG_INTERACTION_STATE <simId> [hexBookId|-]  (posture/container/active interaction + ReadBook progress watchdog)
+DIAG_QUEUE <simId>  (full interaction queue + exit reasons)
+DIAG_RESOLVE <objectId>  (which resolution paths succeed)
+DIAG_WALK <objectId> <hexFieldPath|-> <depth:1-6> [maxNodes]  (reflection field dump; '-' = root)
+DIAG_BLOB <blobId> <index> <count> <hexChunk>  (DEV-108: inbound probe-DLL chunk upload)
+DIAG_LOADTEST  (DEV-108: Assembly.Load the embedded test asm; phase-1 mono gate)
+DIAG_RUN <hexTypeName>  (DEV-108: load last uploaded blob + invoke Type.Run())
+DIAG_RERUN  (DEV-108: re-invoke the last-loaded probe; no re-Assembly.Load)
+DIAG_HANDLERTEST  (DEV-120 T5b spike: load uploaded handler asm + invoke RunCtx via Converter carrier)
+RELOAD_HANDLERS [hexEntryType]  (DEV-122 T5d: hot-swap the last DIAG_BLOB-uploaded handler asm; no TS3 restart)
+PING
+DISCONNECT  (graceful controller shutdown; mod resets dedupe cursor + re-arms beacon; sent automatically)
+ANALYTICS  (front-door-local; Card 49 health panels; no native command)

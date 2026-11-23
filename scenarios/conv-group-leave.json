@@ -1,0 +1,68 @@
+{
+  "name": "conv-group-leave",
+  "summary": "round 3 (defect 1): on the server Jennifer, Iliana and Gunther talk as a group of three (the engine's own Conversation.AddSim), Gunther leaves while Jennifer and Iliana keep talking, then Gunther starts a conversation with Pablo; client 1's copies hold the same conversations as the server's at every stage, and no copy holds a conversation that does not list it (scratch/ConversationProbe.cs stale=0)",
+  "clients": [
+    1
+  ],
+  "household": [
+    "Jennifer",
+    "Pablo",
+    "Iliana",
+    "Gunther"
+  ],
+  "start": {
+    "Jennifer": [
+      968.0,
+      1072.5,
+      0.0,
+      1.0
+    ],
+    "Iliana": [
+      968.0,
+      1076.0,
+      0.0,
+      -1.0
+    ],
+    "Gunther": [
+      971.0,
+      1074.25,
+      -1.0,
+      0.0
+    ],
+    "Pablo": [
+      971.0,
+      1070.5,
+      -1.0,
+      0.0
+    ]
+  },
+  "steps": [
+    "probe:server:scratch/ConvGroupFormProbe.cs",
+    "sleep:4",
+    "probe:server:scratch/ConversationProbe.cs",
+    "probe:1:scratch/ConversationProbe.cs",
+    "probe:server:scratch/ConvGroupLeaveProbe.cs",
+    "sleep:4",
+    "probe:server:scratch/ConversationProbe.cs",
+    "probe:1:scratch/ConversationProbe.cs",
+    "probe:server:scratch/ConvGroupRejoinProbe.cs",
+    "sleep:4",
+    "probe:server:scratch/ConversationProbe.cs",
+    "probe:1:scratch/ConversationProbe.cs",
+    "probe:server:scratch/ConvEndProbe.cs",
+    "sleep:4",
+    "probe:1:scratch/ConversationProbe.cs"
+  ],
+  "watch": {
+    "sims": [
+      "Jennifer",
+      "Gunther"
+    ],
+    "seconds": 90
+  },
+  "after": [
+    "assert:client:probe scratch/ConversationProbe.cs:convs\\s*=\\s*Gunther:none,Iliana:none,Jennifer:none,Pablo:none",
+    "assert:server:probe scratch/ConversationProbe.cs:streamBuilt\\s*=\\s*0\\b"
+  ],
+  "expect": "pass"
+}

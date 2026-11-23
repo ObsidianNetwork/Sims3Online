@@ -1,0 +1,46 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SimsOnline.DedicatedServer", "DedicatedServer\SimsOnline.DedicatedServer.csproj", "{B8B311B6-BAC6-4249-B0F6-2CE92CDF5974}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SimsOnline.DedicatedServer.Tests", "DedicatedServer.Tests\SimsOnline.DedicatedServer.Tests.csproj", "{3523D474-9922-4CA3-B3C2-0875649A6F61}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SimsOnline.Client", "SimsOnline.Client\SimsOnline.Client.csproj", "{5D4CCEAB-C1AF-457C-BBD9-BE14C9D049B6}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SimsOnline.TestClient", "SimsOnline.TestClient\SimsOnline.TestClient.csproj", "{59050BA2-E02D-46F1-8594-12FB1E3E60D2}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SimsOnline.Protocol", "SimsOnline.Protocol\SimsOnline.Protocol.csproj", "{9A664C4B-4AAB-4870-B0F3-9F401CDC6D74}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{B8B311B6-BAC6-4249-B0F6-2CE92CDF5974}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B8B311B6-BAC6-4249-B0F6-2CE92CDF5974}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B8B311B6-BAC6-4249-B0F6-2CE92CDF5974}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B8B311B6-BAC6-4249-B0F6-2CE92CDF5974}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3523D474-9922-4CA3-B3C2-0875649A6F61}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3523D474-9922-4CA3-B3C2-0875649A6F61}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3523D474-9922-4CA3-B3C2-0875649A6F61}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3523D474-9922-4CA3-B3C2-0875649A6F61}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5D4CCEAB-C1AF-457C-BBD9-BE14C9D049B6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5D4CCEAB-C1AF-457C-BBD9-BE14C9D049B6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5D4CCEAB-C1AF-457C-BBD9-BE14C9D049B6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5D4CCEAB-C1AF-457C-BBD9-BE14C9D049B6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{59050BA2-E02D-46F1-8594-12FB1E3E60D2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{59050BA2-E02D-46F1-8594-12FB1E3E60D2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{59050BA2-E02D-46F1-8594-12FB1E3E60D2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{59050BA2-E02D-46F1-8594-12FB1E3E60D2}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9A664C4B-4AAB-4870-B0F3-9F401CDC6D74}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9A664C4B-4AAB-4870-B0F3-9F401CDC6D74}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9A664C4B-4AAB-4870-B0F3-9F401CDC6D74}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9A664C4B-4AAB-4870-B0F3-9F401CDC6D74}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal

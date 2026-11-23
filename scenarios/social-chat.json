@@ -1,0 +1,21 @@
+{
+  "name": "social-chat",
+  "summary": "Jennifer chats with Pablo (facing, balloons, social state)",
+  "steps": [
+    "act:Jennifer sim:Pablo social:Chat --wait 40",
+    "sleep:10"
+  ],
+  "watch": {
+    "sims": [
+      "Jennifer",
+      "Pablo"
+    ],
+    "seconds": 28,
+    "capture": true
+  },
+  "after": [
+    "sims:Jennifer Pablo --machines",
+    "capture:Jennifer:2"
+  ],
+  "expect": "pass"
+}

@@ -1,0 +1,20 @@
+{
+  "name": "shower",
+  "summary": "Pablo takes a shower (in the bathroom, not the hallway)",
+  "steps": [
+    "act:Pablo near:Shower TakeShower --wait 40",
+    "sleep:15"
+  ],
+  "watch": {
+    "sims": [
+      "Pablo"
+    ],
+    "seconds": 35,
+    "capture": true
+  },
+  "after": [
+    "sims:Pablo --machines",
+    "capture:Pablo:2"
+  ],
+  "expect": "pass"
+}

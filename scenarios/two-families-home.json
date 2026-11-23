@@ -1,0 +1,42 @@
+{
+  "name": "two-families-home",
+  "summary": "Each family at home: player 1 on Jennifer (Martinez) and player 2 on Iliana (Langerak, 14 Sierra Tango Street) each pick for their own Sim; each HUD lists only its own Sim's queue, player 2's cancel removes the server's entry, and both copies stay drawn",
+  "clients": [
+    1,
+    2
+  ],
+  "household": [
+    "Jennifer",
+    "Pablo",
+    "Iliana"
+  ],
+  "start": "langeraks",
+  "player2": "Iliana",
+  "steps": [
+    "cpick:1:ChairDining Sit --near Jennifer",
+    "cpick:2:inv:PhoneSmart BrowseTheWeb",
+    "hud:1:10:actor=Jennifer[^;]*; hudQueue=1;",
+    "hud:2:10:actor=Iliana[^;]*; hudQueue=1;",
+    "until:server:Jennifer:SittingPosture:45",
+    "until:server:Iliana:BrowseTheWeb:45",
+    "capture:Iliana:2",
+    "cpick:2:--cancel 0",
+    "until:server:Iliana:^(?:[^|]*\\|){9}(?![^|]*BrowseTheWeb):30",
+    "hud:2:15:actor=Iliana[^;]*; hudQueue=0;",
+    "sleep:4"
+  ],
+  "watch": {
+    "sims": [
+      "Iliana",
+      "Jennifer"
+    ],
+    "seconds": 180
+  },
+  "after": [
+    "sims:Iliana Jennifer --machines",
+    "nonotice:1:Can't do",
+    "nonotice:2:Can't do",
+    "drivers"
+  ],
+  "expect": "pass"
+}

@@ -1,0 +1,28 @@
+# Settings for the Python tooling in scripts/ and tools/. This is not a package.
+# Set up once with: python -m pip install -r requirements-dev.txt
+# Then run `python scripts/dev.py check`, which runs the same lint and tests as CI.
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+extend-exclude = ["_analysis", ".omo", ".tools", "evidence", "node_modules", "refs"]
+
+[tool.ruff.lint]
+# Bug-class rules only. `ruff format` is deliberately not enforced: it would rewrite most files.
+select = ["E4", "E7", "E9", "F", "B", "PLE", "W6"]
+ignore = [
+  "E402", "E701", "E702", "E731", "E741",  # style in long-lived scripts; not bugs
+  "B007", "B009", "B023", "B905",          # B023 sites are closures used inside the same loop iteration
+]
+
+[tool.ruff.lint.per-file-ignores]
+# A ratchet: remove a line when its file is fixed or deleted; never add one to silence new code.
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["pathlib.Path"]
+
+[tool.pytest.ini_options]
+python_files = ["*_test.py"]
+pythonpath = [".", "scripts"]
+testpaths = ["scripts"]
+addopts = "-p no:cacheprovider"

@@ -1,0 +1,222 @@
+OK	plausible=1	resp=0123456789abcdef0123456789abcdef|1|~|~|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+OK	plausible=1	resp=0123456789abcdef0123456789abcdef|1|~|~|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+OK	plausible=1	resp=0123456789abcdef0123456789abcdef|1|~|~|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+OK	plausible=1	resp=0123456789abcdef0123456789abcdef|1|~|~|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+OK	plausible=0	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+OK	plausible=0	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+OK	plausible=0	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+ERROR	plausible=1	resp=0123456789abcdef0123456789abcdef|0|Sim not found: 42|~|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+ERROR	plausible=1	resp=0123456789abcdef0123456789abcdef|0||~|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+ERROR	plausible=1	resp=throw	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+ERROR	plausible=1	resp=throw	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+ERROR	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+ERROR	plausible=1	resp=00000000000000000000000000000000|0|Bridge response is too large.|~|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+ERROR	plausible=1	resp=0123456789abcdef0123456789abcdef|0|café 漢|~|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+ERROR	plausible=1	resp=0123456789abcdef0123456789abcdef|0|�|~|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+ERROR	plausible=1	resp=0123456789abcdef0123456789abcdef|0|a|~|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+ERROR	plausible=0	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+ERROR	plausible=1	resp=throw	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+SESSION_READY	plausible=1	resp=0123456789abcdef0123456789abcdef|1|~|~|123456|Sunset Valley|Martinez.sims3|Pause|sims=[]|objs=[]	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+SESSION_READY	plausible=1	resp=throw	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+SESSION_READY	plausible=1	resp=0123456789abcdef0123456789abcdef|1|~|~|-7|w|s|Pause|sims=[]|objs=[]	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+SESSION_READY	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+SNAPSHOT	plausible=1	resp=0123456789abcdef0123456789abcdef|1|~|~|42|Sunset Valley|Martinez|Normal|sims=[]|objs=[]	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+SNAPSHOT	plausible=1	resp=0123456789abcdef0123456789abcdef|1|~|~|42|W|S|Speed2|sims=[7,Bella Goth,9,1.5,0,-2.25,55,2,Sit,300,4,9001;8,Mortimer,9,10,20,30,~,~,~,~,0,~;9,Old,9,1,2,3,~,~,~,~,~,~;10,Legacy,9,1,2,3,66,5,~,~,~,~;13,Ws,9,1000.5,2,300,~,~,~,~,~,~]|objs=[100,Sims3.Gameplay.Objects.Chair,4.5,0,1,300;101,Door,1000,-0,0.1,~]	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+SNAPSHOT	plausible=1	resp=0123456789abcdef0123456789abcdef|1|~|~|42|W|S|Speed3|sims=[]|objs=[]	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+SNAPSHOT	plausible=1	resp=0123456789abcdef0123456789abcdef|1|~|~|42|W|S|Ultra|sims=[7,Bella Goth,9,1.5,0,-2.25,55,2,Sit,300,4,9001]|objs=[]	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+SNAPSHOT	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+SNAPSHOT	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+SNAPSHOT	plausible=1	resp=0123456789abcdef0123456789abcdef|1|~|~|42|W|S|Pause|sims=[]|objs=[100,Sims3.Gameplay.Objects.Chair,4.5,0,1,300]	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+SNAPSHOT	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+SNAPSHOT	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+SNAPSHOT	plausible=0	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+SNAPSHOT_CHUNK	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=0123456789abcdef0123456789abcdef|0|3|SNAPSHOT|0123456789abcdef0123456789abcdef|42|57	event=~|dropped=-
+SNAPSHOT_CHUNK	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=0123456789abcdef0123456789abcdef|2|3|	event=~|dropped=-
+SNAPSHOT_CHUNK	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+SNAPSHOT_CHUNK	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+BULK_REF	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=0123456789abcdef0123456789abcdef|snapshot|0|2048|00ABCDEF|~|~	chunk=~	event=~|dropped=-
+BULK_REF	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=0123456789abcdef0123456789abcdef|snapshot-part|3|524256|DEADBEEF|1|4	chunk=~	event=~|dropped=-
+BULK_REF	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+BULK_REF	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=0123456789abcdef0123456789abcdef|diag|1|10|DEADBEEF|~|~	chunk=~	event=~|dropped=-
+BULK_REF	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+BULK_REF	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+BULK_REF	plausible=0	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=0123456789abcdef0123456789abcdef|snapshot|0|1|00000000|~|~	chunk=~	event=~|dropped=-
+BULK_REF	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+AUTONOMY_PROBE	plausible=1	resp=0123456789abcdef0123456789abcdef|1|~|sim=42;enabled=true;disabledCount=0|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+AUTONOMY_PROBE	plausible=1	resp=0123456789abcdef0123456789abcdef|0|autonomy-probe=none: not found|~|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+AUTONOMY_PROBE	plausible=1	resp=0123456789abcdef0123456789abcdef|0|autonomy-probe=partial: |~|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+AUTONOMY_PROBE	plausible=1	resp=throw	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+AUTONOMY_PROBE	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+AUTONOMY_PROBE	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+SIM_LIFECYCLE_PROBE	plausible=1	resp=0123456789abcdef0123456789abcdef|1|~|sim=42;enabled=true;disabledCount=0|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+SIM_LIFECYCLE_PROBE	plausible=1	resp=0123456789abcdef0123456789abcdef|0|sim-lifecycle-probe=none: not found|~|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+SIM_LIFECYCLE_PROBE	plausible=1	resp=0123456789abcdef0123456789abcdef|0|sim-lifecycle-probe=partial: |~|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+SIM_LIFECYCLE_PROBE	plausible=1	resp=throw	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+SIM_LIFECYCLE_PROBE	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+SIM_LIFECYCLE_PROBE	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+ACTOR_LOOKUP_PROBE	plausible=1	resp=0123456789abcdef0123456789abcdef|1|~|sim=42;enabled=true;disabledCount=0|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+ACTOR_LOOKUP_PROBE	plausible=1	resp=0123456789abcdef0123456789abcdef|0|actor-lookup-probe=none: not found|~|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+ACTOR_LOOKUP_PROBE	plausible=1	resp=0123456789abcdef0123456789abcdef|0|actor-lookup-probe=partial: |~|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+ACTOR_LOOKUP_PROBE	plausible=1	resp=throw	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+ACTOR_LOOKUP_PROBE	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+ACTOR_LOOKUP_PROBE	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+SIM_MOTIVE_PROBE	plausible=1	resp=0123456789abcdef0123456789abcdef|1|~|sim=42;enabled=true;disabledCount=0|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+SIM_MOTIVE_PROBE	plausible=1	resp=0123456789abcdef0123456789abcdef|0|sim-motive-probe=none: not found|~|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+SIM_MOTIVE_PROBE	plausible=1	resp=0123456789abcdef0123456789abcdef|0|sim-motive-probe=partial: |~|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+SIM_MOTIVE_PROBE	plausible=1	resp=throw	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+SIM_MOTIVE_PROBE	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+SIM_MOTIVE_PROBE	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+SIM_INTERACTION_QUEUE_PROBE	plausible=1	resp=0123456789abcdef0123456789abcdef|1|~|sim=42;enabled=true;disabledCount=0|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+SIM_INTERACTION_QUEUE_PROBE	plausible=1	resp=0123456789abcdef0123456789abcdef|0|sim-interaction-queue-probe=none: not found|~|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+SIM_INTERACTION_QUEUE_PROBE	plausible=1	resp=0123456789abcdef0123456789abcdef|0|sim-interaction-queue-probe=partial: |~|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+SIM_INTERACTION_QUEUE_PROBE	plausible=1	resp=throw	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+SIM_INTERACTION_QUEUE_PROBE	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+SIM_INTERACTION_QUEUE_PROBE	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+HOUSEHOLD_CASH_PROBE	plausible=1	resp=0123456789abcdef0123456789abcdef|1|~|sim=42;enabled=true;disabledCount=0|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+HOUSEHOLD_CASH_PROBE	plausible=1	resp=0123456789abcdef0123456789abcdef|0|household-cash-probe=none: not found|~|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+HOUSEHOLD_CASH_PROBE	plausible=1	resp=0123456789abcdef0123456789abcdef|0|household-cash-probe=partial: |~|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+HOUSEHOLD_CASH_PROBE	plausible=1	resp=throw	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+HOUSEHOLD_CASH_PROBE	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+HOUSEHOLD_CASH_PROBE	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+SIM_SKILL_PROBE	plausible=1	resp=0123456789abcdef0123456789abcdef|1|~|sim=42;enabled=true;disabledCount=0|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+SIM_SKILL_PROBE	plausible=1	resp=0123456789abcdef0123456789abcdef|0|sim-skill-probe=none: not found|~|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+SIM_SKILL_PROBE	plausible=1	resp=0123456789abcdef0123456789abcdef|0|sim-skill-probe=partial: |~|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+SIM_SKILL_PROBE	plausible=1	resp=throw	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+SIM_SKILL_PROBE	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+SIM_SKILL_PROBE	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+SIM_AUTONOMY_PROBE	plausible=1	resp=0123456789abcdef0123456789abcdef|1|~|sim=42;enabled=true;disabledCount=0|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+SIM_AUTONOMY_PROBE	plausible=1	resp=0123456789abcdef0123456789abcdef|0|sim-autonomy-probe=none: not found|~|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+SIM_AUTONOMY_PROBE	plausible=1	resp=0123456789abcdef0123456789abcdef|0|sim-autonomy-probe=partial: |~|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+SIM_AUTONOMY_PROBE	plausible=1	resp=throw	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+SIM_AUTONOMY_PROBE	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+SIM_AUTONOMY_PROBE	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+SIM_STATUS_PROBE	plausible=1	resp=0123456789abcdef0123456789abcdef|1|~|sim=42;enabled=true;disabledCount=0|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+SIM_STATUS_PROBE	plausible=1	resp=0123456789abcdef0123456789abcdef|0|sim-status-probe=none: not found|~|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+SIM_STATUS_PROBE	plausible=1	resp=0123456789abcdef0123456789abcdef|0|sim-status-probe=partial: |~|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+SIM_STATUS_PROBE	plausible=1	resp=throw	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+SIM_STATUS_PROBE	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+SIM_STATUS_PROBE	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_STATE_REPORT	plausible=1	resp=0123456789abcdef0123456789abcdef|1|~|sim=42;enabled=true;disabledCount=0|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_STATE_REPORT	plausible=1	resp=0123456789abcdef0123456789abcdef|0|DIAG_STATE_REPORT=none: not found|~|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_STATE_REPORT	plausible=1	resp=0123456789abcdef0123456789abcdef|0|DIAG_STATE_REPORT=partial: |~|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_STATE_REPORT	plausible=1	resp=throw	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_STATE_REPORT	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_STATE_REPORT	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_QUEUE_REPORT	plausible=1	resp=0123456789abcdef0123456789abcdef|1|~|sim=42;enabled=true;disabledCount=0|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_QUEUE_REPORT	plausible=1	resp=0123456789abcdef0123456789abcdef|0|DIAG_QUEUE_REPORT=none: not found|~|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_QUEUE_REPORT	plausible=1	resp=0123456789abcdef0123456789abcdef|0|DIAG_QUEUE_REPORT=partial: |~|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_QUEUE_REPORT	plausible=1	resp=throw	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_QUEUE_REPORT	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_QUEUE_REPORT	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_INTERACTION_BUNDLE_REPORT	plausible=1	resp=0123456789abcdef0123456789abcdef|1|~|sim=42;enabled=true;disabledCount=0|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_INTERACTION_BUNDLE_REPORT	plausible=1	resp=0123456789abcdef0123456789abcdef|0|DIAG_INTERACTION_BUNDLE_REPORT=none: not found|~|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_INTERACTION_BUNDLE_REPORT	plausible=1	resp=0123456789abcdef0123456789abcdef|0|DIAG_INTERACTION_BUNDLE_REPORT=partial: |~|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_INTERACTION_BUNDLE_REPORT	plausible=1	resp=throw	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_INTERACTION_BUNDLE_REPORT	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_INTERACTION_BUNDLE_REPORT	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_INTERACTION_STATE_REPORT	plausible=1	resp=0123456789abcdef0123456789abcdef|1|~|sim=42;enabled=true;disabledCount=0|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_INTERACTION_STATE_REPORT	plausible=1	resp=0123456789abcdef0123456789abcdef|0|DIAG_INTERACTION_STATE_REPORT=none: not found|~|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_INTERACTION_STATE_REPORT	plausible=1	resp=0123456789abcdef0123456789abcdef|0|DIAG_INTERACTION_STATE_REPORT=partial: |~|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_INTERACTION_STATE_REPORT	plausible=1	resp=throw	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_INTERACTION_STATE_REPORT	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_INTERACTION_STATE_REPORT	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_RESOLVE_REPORT	plausible=1	resp=0123456789abcdef0123456789abcdef|1|~|sim=42;enabled=true;disabledCount=0|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_RESOLVE_REPORT	plausible=1	resp=0123456789abcdef0123456789abcdef|0|DIAG_RESOLVE_REPORT=none: not found|~|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_RESOLVE_REPORT	plausible=1	resp=0123456789abcdef0123456789abcdef|0|DIAG_RESOLVE_REPORT=partial: |~|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_RESOLVE_REPORT	plausible=1	resp=throw	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_RESOLVE_REPORT	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_RESOLVE_REPORT	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_WALK_REPORT	plausible=1	resp=0123456789abcdef0123456789abcdef|1|~|sim=42;enabled=true;disabledCount=0|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_WALK_REPORT	plausible=1	resp=0123456789abcdef0123456789abcdef|0|DIAG_WALK_REPORT=none: not found|~|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_WALK_REPORT	plausible=1	resp=0123456789abcdef0123456789abcdef|0|DIAG_WALK_REPORT=partial: |~|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_WALK_REPORT	plausible=1	resp=throw	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_WALK_REPORT	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_WALK_REPORT	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_BLOB_REPORT	plausible=1	resp=0123456789abcdef0123456789abcdef|1|~|sim=42;enabled=true;disabledCount=0|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_BLOB_REPORT	plausible=1	resp=0123456789abcdef0123456789abcdef|0|DIAG_BLOB_REPORT=none: not found|~|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_BLOB_REPORT	plausible=1	resp=0123456789abcdef0123456789abcdef|0|DIAG_BLOB_REPORT=partial: |~|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_BLOB_REPORT	plausible=1	resp=throw	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_BLOB_REPORT	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_BLOB_REPORT	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_LOADTEST_REPORT	plausible=1	resp=0123456789abcdef0123456789abcdef|1|~|sim=42;enabled=true;disabledCount=0|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_LOADTEST_REPORT	plausible=1	resp=0123456789abcdef0123456789abcdef|0|DIAG_LOADTEST_REPORT=none: not found|~|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_LOADTEST_REPORT	plausible=1	resp=0123456789abcdef0123456789abcdef|0|DIAG_LOADTEST_REPORT=partial: |~|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_LOADTEST_REPORT	plausible=1	resp=throw	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_LOADTEST_REPORT	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_LOADTEST_REPORT	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_RUN_REPORT	plausible=1	resp=0123456789abcdef0123456789abcdef|1|~|sim=42;enabled=true;disabledCount=0|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_RUN_REPORT	plausible=1	resp=0123456789abcdef0123456789abcdef|0|DIAG_RUN_REPORT=none: not found|~|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_RUN_REPORT	plausible=1	resp=0123456789abcdef0123456789abcdef|0|DIAG_RUN_REPORT=partial: |~|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_RUN_REPORT	plausible=1	resp=throw	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_RUN_REPORT	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_RUN_REPORT	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+STATE_INJECTION_PROBE	plausible=1	resp=0123456789abcdef0123456789abcdef|1|~|sim=42;enabled=true;disabledCount=0|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+STATE_INJECTION_PROBE	plausible=1	resp=0123456789abcdef0123456789abcdef|0|state-injection-probe=none: not found|~|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+STATE_INJECTION_PROBE	plausible=1	resp=0123456789abcdef0123456789abcdef|0|state-injection-probe=partial: |~|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+STATE_INJECTION_PROBE	plausible=1	resp=throw	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+STATE_INJECTION_PROBE	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+STATE_INJECTION_PROBE	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+IMPORT_HOUSEHOLD_CONTENT_REPORT	plausible=1	resp=0123456789abcdef0123456789abcdef|1|~|sim=42;enabled=true;disabledCount=0|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+IMPORT_HOUSEHOLD_CONTENT_REPORT	plausible=1	resp=0123456789abcdef0123456789abcdef|0|household-import=none: not found|~|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+IMPORT_HOUSEHOLD_CONTENT_REPORT	plausible=1	resp=0123456789abcdef0123456789abcdef|0|household-import=partial: |~|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+IMPORT_HOUSEHOLD_CONTENT_REPORT	plausible=1	resp=throw	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+IMPORT_HOUSEHOLD_CONTENT_REPORT	plausible=0	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+IMPORT_HOUSEHOLD_CONTENT_REPORT	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+MERGE_TRAVELLING_HOUSEHOLD_REPORT	plausible=1	resp=0123456789abcdef0123456789abcdef|1|~|sim=42;enabled=true;disabledCount=0|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+MERGE_TRAVELLING_HOUSEHOLD_REPORT	plausible=1	resp=0123456789abcdef0123456789abcdef|0|travel-merge=none: not found|~|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+MERGE_TRAVELLING_HOUSEHOLD_REPORT	plausible=1	resp=0123456789abcdef0123456789abcdef|0|travel-merge=partial: |~|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+MERGE_TRAVELLING_HOUSEHOLD_REPORT	plausible=1	resp=throw	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+MERGE_TRAVELLING_HOUSEHOLD_REPORT	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+MERGE_TRAVELLING_HOUSEHOLD_REPORT	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_STATE_REPORT	plausible=1	resp=0123456789abcdef0123456789abcdef|1|~|role=server;inWorld=true;tick=123;autonomyWatch=-;commandGate=-;pendingOutbound=0;swallowed=0|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+DIAG_BLOB_REPORT	plausible=1	resp=0123456789abcdef0123456789abcdef|1|~|exported=true;householdId=100;slotIndex=1;totalBytes=300;propertyStreamBytes=100;resKeyTableBytes=100;objectIdTableBytes=100;crc32=DEADBEEF;entryCount=4;resKeyCount=5;objectIdCount=6;inventoryCount=0|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+AUTONOMY_PROBE	plausible=1	resp=0123456789abcdef0123456789abcdef|1|~|42:50.00,-20.00,0.00,0.00,0.00,0.00:-;43:1.00,2.00,3.00,4.00,5.00,6.00:1/2+3/4|~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+HELLO	plausible=1	resp=~	hello=Sunset Valley|123|abc1234@2026-11-01T00:00:00Z|6|multi-slot=16,bulk=4x512k,layout=11,snapshot2=1|v11=1	connect_hello=1	accept_connect=1	bulkref=~	chunk=~	event=~|dropped=-
+HELLO	plausible=1	resp=~	hello=W|0|s|6|layout=10|v11=0	connect_hello=1	accept_connect=1	bulkref=~	chunk=~	event=~|dropped=-
+HELLO	plausible=1	resp=~	hello=W|0|s|6| LAYOUT=12 |v11=1	connect_hello=1	accept_connect=1	bulkref=~	chunk=~	event=~|dropped=-
+HELLO	plausible=1	resp=~	hello=W|0|s|6|bulk=4x512k, Multi-Slot=8|v11=1	connect_hello=1	accept_connect=1	bulkref=~	chunk=~	event=~|dropped=-
+HELLO	plausible=1	resp=~	hello=W|0|s|6||v11=0	connect_hello=1	accept_connect=1	bulkref=~	chunk=~	event=~|dropped=-
+HELLO	plausible=1	resp=~	hello=W|10|stamp|5|~|v11=0	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+HELLO	plausible=1	resp=~	hello=W|10|~|4|~|v11=0	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+HELLO	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=1	bulkref=~	chunk=~	event=~|dropped=-
+HELLO	plausible=1	resp=~	hello=throw	connect_hello=throw	accept_connect=throw	bulkref=~	chunk=~	event=~|dropped=-
+HELLO	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+HELLO	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=1	bulkref=~	chunk=~	event=~|dropped=-
+HELLO	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=1	bulkref=~	chunk=~	event=~|dropped=-
+HELLO	plausible=1	resp=~	hello=W|10|s|6|multi-slot=16,bulk=4x512k,layout=11,snapshot2=1|v11=1	connect_hello=1	accept_connect=1	bulkref=~	chunk=~	event=~|dropped=-
+EVENT	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=InteractionQueued|42|9|Sit|77|1.5,2,3|~
+EVENT	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=InteractionQueued|42|9|Sit|~|~|bookId=8,seatArea=2
+EVENT	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=InteractionQueued
+EVENT	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=InteractionQueued
+EVENT	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=InteractionStarted|42|9
+EVENT	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=InteractionCompleted|42|9
+EVENT	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=InteractionFailed|42|9|Route failed
+EVENT	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=InteractionFailed
+EVENT	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=IntentCaptured|42|77|Terrain.GoHere|1,2,3
+EVENT	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=IntentCaptured|42|77|Chat|~
+EVENT	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=UserIntentCaptured|42|77|Type|Name|A/B|2:77:16|1,2,3|s77
+EVENT	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=UserIntentCaptured|42|77|T|N|P|0:0:0|~|-
+EVENT	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=DialogRequested|3|42|TwoButton|Q?,Yes
+EVENT	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=DialogRequested|3|42|K|only one,,
+EVENT	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=DialogRequest
+EVENT	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=DialogAnswerCaptured|3|42|Yes
+EVENT	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=DialogAnswerCaptured|3|42|~
+EVENT	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=CommandRejected|0123456789abcdef0123456789abcdef|RouteFailed
+EVENT	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=CommandRejected|0123456789abcdef0123456789abcdef|NotRun
+EVENT	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=PickFailed
+EVENT	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=CancelIntentCaptured|42|9
+EVENT	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=LeaveConversationIntentCaptured|42
+EVENT	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=SpeedIntentCaptured|Speed3
+EVENT	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=SpeedIntentCaptured|Speed2
+EVENT	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=SpeedIntentCaptured
+EVENT	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=ServerError|boom
+EVENT	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=ServerError
+EVENT	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+EVENT	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+EVENT	plausible=0	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+MISC	plausible=0	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+MISC	plausible=0	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+MISC	plausible=0	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+MISC	plausible=0	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+MISC	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-
+MISC	plausible=1	resp=~	hello=~	connect_hello=0	accept_connect=0	bulkref=~	chunk=~	event=~|dropped=-

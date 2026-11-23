@@ -1,0 +1,42 @@
+{
+  "format_version": 1,
+  "flags": 5,
+  "lot_id": 4251,
+  "world_seed": 61681,
+  "rooms": [
+    {"room_id": 0, "level": 0, "portal_first": 0, "portal_len": 4, "cell_first": 0, "cell_len": 4}
+  ],
+  "cells": [
+    {"cell_id": 0, "room_id": 0, "vertex_first": 0, "vertex_len": 4, "portal_first": 0, "portal_len": 4, "centroid_cm": [0, 0, 0], "flags": 0},
+    {"cell_id": 1, "room_id": 0, "vertex_first": 4, "vertex_len": 4, "portal_first": 0, "portal_len": 4, "centroid_cm": [200, 0, 0], "flags": 0},
+    {"cell_id": 2, "room_id": 0, "vertex_first": 8, "vertex_len": 4, "portal_first": 0, "portal_len": 4, "centroid_cm": [100, 0, 0], "flags": 0},
+    {"cell_id": 3, "room_id": 0, "vertex_first": 12, "vertex_len": 4, "portal_first": 0, "portal_len": 4, "centroid_cm": [100, 100, 0], "flags": 0}
+  ],
+  "portals": [
+    {"portal_id": 0, "cell_a": 0, "cell_b": 2, "path_type": 0, "door_id": 0, "jamb_a_cm": [50, -50], "jamb_b_cm": [50, 50], "portal_y_cm": 0, "width_cm": 100, "lock_key": 0},
+    {"portal_id": 1, "cell_a": 1, "cell_b": 2, "path_type": 0, "door_id": 0, "jamb_a_cm": [150, -50], "jamb_b_cm": [150, 50], "portal_y_cm": 0, "width_cm": 100, "lock_key": 0},
+    {"portal_id": 2, "cell_a": 0, "cell_b": 3, "path_type": 0, "door_id": 0, "jamb_a_cm": [50, -50], "jamb_b_cm": [50, 50], "portal_y_cm": 50, "width_cm": 100, "lock_key": 0},
+    {"portal_id": 3, "cell_a": 1, "cell_b": 3, "path_type": 0, "door_id": 0, "jamb_a_cm": [150, -50], "jamb_b_cm": [150, 50], "portal_y_cm": 50, "width_cm": 100, "lock_key": 0}
+  ],
+  "obstacle_templates": [
+    {"object_type_key": 1, "min_cm": [-10, 0, -10], "max_cm": [10, 50, 10], "scale_x1000": 1000}
+  ],
+  "vertices": [
+    [-50, 0, -50],
+    [-50, 0, 50],
+    [50, 0, 50],
+    [50, 0, -50],
+    [150, 0, -50],
+    [150, 0, 50],
+    [250, 0, 50],
+    [250, 0, -50],
+    [50, 0, -50],
+    [50, 0, 50],
+    [150, 0, 50],
+    [150, 0, -50],
+    [50, 100, -50],
+    [50, 100, 50],
+    [150, 100, 50],
+    [150, 100, -50]
+  ]
+}

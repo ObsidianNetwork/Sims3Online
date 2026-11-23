@@ -1,0 +1,5 @@
+/target/
+# Source-anchored translations are private ABI oracles, not distributable code.
+/src/routing.rs
+/src/sacs_rng.rs
+/Cargo.lock

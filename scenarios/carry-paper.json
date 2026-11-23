@@ -1,0 +1,23 @@
+{
+  "name": "carry-paper",
+  "summary": "Pablo recycles a newspaper made a metre in front of him (PaperPlaceProbe): the game's CarrySystem.PickUp turns the paper's floor shadow off (Objects.EnableDropShadow, CarrySystem.cs:287), an Ob line the client replays on its copy (seam-gaps row 6); the watch covers the pick-up and the walk to the trash can (14 s), then 25 s for both games to finish the walk back before the compare (the walk back is FastWalk through a door, where pace flags are an older walk defect: sleep-bed 27 of 373 runs). prop:FoodProp is --known: the food fridge-snack leaves on the counter differs (fridge-snack's known failure)",
+  "steps": [
+    "probe:server:scratch/PaperPlaceProbe.cs",
+    "sleep:3",
+    "act:Pablo id:{paper} RecycleNewspaper --wait 30",
+    "sleep:25"
+  ],
+  "watch": {
+    "sims": [
+      "Pablo"
+    ],
+    "seconds": 14,
+    "capture": true
+  },
+  "after": [
+    "sims:Pablo --props --known prop:FoodProp",
+    "capture:Pablo:1",
+    "assert:client:SACS_REPLAY 00:objects2=installed:\\d,lines:\\d+,client:applied:\\d+/failed:\\d+/walking:\\d+/lots:\\d+/other:[1-9]\\d*/lastOther:EnableDropShadow"
+  ],
+  "expect": "pass"
+}

@@ -1,0 +1,34 @@
+{
+  "name": "two-shelf-read",
+  "summary": "The home bookshelf both Sims stand by (the only one on the home lot) holds no general book, so Read Something fails on it everywhere; the setup moves Pablo's general book from his inventory onto it (on the server), player 1's Jennifer takes it to read, the shelf then holds no general book on the server and on player 2's game, and player 2's menu on that shelf must not offer Read Something. Only Read Something is checked: the same menu offers Open Bookshelf, which the server refuses while Jennifer uses the shelf (Bookshelf_OpenInventory's test reads target.InUse, which the mod does not mirror; counted by the sweep). The reading is cancelled and the book goes back to Pablo at the end",
+  "clients": [
+    1,
+    2
+  ],
+  "steps": [
+    "probe:server:scratch/ShelfBooksProbe.cs",
+    "sleep:2",
+    "cpick:1:id:7787005372684539968 ReadSomething",
+    "until:server:Jennifer:Read:45",
+    "sleep:3",
+    "probe:server:scratch/ShelfNoGeneralProbe.cs",
+    "probe:2:scratch/ShelfNoGeneralProbe.cs",
+    "menudiff:2:Pablo:type:Bookshelf:only=Read Something",
+    "probe:server:scratch/CancelAllProbe.cs",
+    "sleep:10",
+    "probe:server:scratch/ShelfBooksBackProbe.cs"
+  ],
+  "watch": {
+    "sims": [
+      "Jennifer",
+      "Pablo"
+    ],
+    "seconds": 90,
+    "events": true
+  },
+  "after": [
+    "nonotice:1:Can't do",
+    "sims:Jennifer Pablo --props"
+  ],
+  "expect": "pass"
+}

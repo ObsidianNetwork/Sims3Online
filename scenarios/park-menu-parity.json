@@ -1,0 +1,38 @@
+{
+  "name": "park-menu-parity",
+  "summary": "n15: player 1's Jennifer and player 2's Iliana talk at the community park (placed as in two-park-meet, conversation started on the server); player 1's pie menu for Jennifer on Iliana matches the server's exactly (no entry the server refuses, none missing on the client, none only on the client), and the inputs the social tests read (position, room, the outside answers, season, buffs, known traits, lot topics) are printed for both games beside it",
+  "clients": [
+    1,
+    2
+  ],
+  "household": [
+    "Jennifer",
+    "Pablo",
+    "Iliana"
+  ],
+  "start": "park",
+  "player2": "Iliana",
+  "steps": [
+    "probe:server:scratch/ParkStrangersProbe.cs",
+    "probe:1:scratch/ParkStrangersProbe.cs",
+    "probe:2:scratch/ParkStrangersProbe.cs",
+    "until:server:Jennifer:^(?:[^|]*\\|){2}9038443088839058560\\|:30",
+    "until:server:Iliana:^(?:[^|]*\\|){2}9038443088839058560\\|:30",
+    "until:client1:Jennifer:^(?:[^|]*\\|){2}{server:2}\\|(?:[^|]*\\|){13}0\\|high\\b:60",
+    "until:client1:Iliana:^(?:[^|]*\\|){2}{server:2}\\|(?:[^|]*\\|){13}0\\|high\\b:60",
+    "probe:server:scratch/ConvPairProbe.cs",
+    "sleep:4",
+    "menudiff:1:Jennifer:Iliana:exact"
+  ],
+  "watch": {
+    "sims": [
+      "Jennifer",
+      "Iliana"
+    ],
+    "seconds": 120
+  },
+  "after": [
+    "nonotice:1:Can't do"
+  ],
+  "expect": "known-failing: (2026-11-01): client 1 offers ZombifiedSocials (Arrrgh) that the server refuses (Def_TestFailed), per-client lunar phase and occult drift; runs 20261101-030013 and 20261101-035827"
+}

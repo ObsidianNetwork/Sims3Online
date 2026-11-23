@@ -1,0 +1,7 @@
+﻿# check_docs allowlist: path mentions known not to exist and kept on purpose (scripts/check_docs.py).
+# One rule per line: <path glob> [<document glob>]  # reason
+# The document glob defaults to every document. Globs are fnmatch (case-sensitive; * also matches /).
+# Add a rule only for a planned path or a name that is not a path; fix real stale mentions instead.
+
+# Not a path: the MCP method name.
+tools/list                                  # MCP JSON-RPC method, not a folder

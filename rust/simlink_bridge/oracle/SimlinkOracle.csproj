@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    card 56 gates 4 and 5: the C# side of the differential. It drives the controller's own
+    BridgeLineCodec (EncodeCommand, TryDecodeResponse, TryParseHello, TryParseBulkRef, TryDecodeChunk,
+    TryDecodeEvent) over the same corpora the Rust crate reads, and prints what the oracle produces.
+    Usage and outputs: rust/simlink_bridge/README.md and docs/dev-tools.md.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\DedicatedServer\SimsOnline.DedicatedServer.csproj" />
+    <!-- card 57 ruling 4: the protocol types the oracle decodes live in SimsOnline.Protocol. -->
+    <ProjectReference Include="..\..\..\SimsOnline.Protocol\SimsOnline.Protocol.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,20 @@
+{
+  "name": "sit-dining",
+  "summary": "Jennifer walks to a dining chair and sits",
+  "steps": [
+    "act:Jennifer near:ChairDining Sit --name Sit --wait 40",
+    "sleep:8"
+  ],
+  "watch": {
+    "sims": [
+      "Jennifer"
+    ],
+    "seconds": 28,
+    "capture": true
+  },
+  "after": [
+    "sims:Jennifer --machines",
+    "capture:Jennifer:2"
+  ],
+  "expect": "pass"
+}

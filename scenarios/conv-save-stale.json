@@ -1,0 +1,34 @@
+{
+  "name": "conv-save-stale",
+  "summary": "client 1 holds a conversation the server's Sims do not (seeded Gunther+Iliana, as a client keeps the one its save loaded after the server's ended before its first publishing pass); the server's absence line (a self-pair Cv end, on each resend) must end it: after one resend window both games hold no conversation for the four Sims, and the client counts the detach",
+  "clients": [
+    1
+  ],
+  "household": [
+    "Jennifer",
+    "Pablo",
+    "Iliana",
+    "Gunther"
+  ],
+  "start": "park",
+  "steps": [
+    "probe:1:scratch/ConvSeedStaleProbe.cs",
+    "probe:1:scratch/ConversationProbe.cs",
+    "sleep:15",
+    "probe:server:scratch/ConversationProbe.cs",
+    "probe:1:scratch/ConversationProbe.cs"
+  ],
+  "watch": {
+    "sims": [
+      "Gunther",
+      "Iliana"
+    ],
+    "seconds": 25
+  },
+  "after": [
+    "assert:server:probe scratch/ConversationProbe.cs:convs\\s*=\\s*Gunther:none,Iliana:none,Jennifer:none,Pablo:none",
+    "assert:client:probe scratch/ConversationProbe.cs:convs\\s*=\\s*Gunther:none,Iliana:none,Jennifer:none,Pablo:none",
+    "rose:client:SACS_REPLAY 00:absenceDetached"
+  ],
+  "expect": "pass"
+}

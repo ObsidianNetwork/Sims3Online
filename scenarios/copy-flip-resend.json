@@ -1,0 +1,25 @@
+{
+  "name": "copy-flip-resend",
+  "summary": "Pablo relaxes in bed; the seed copy goes off on both games, the client rejoins and meets every driver without seeds or parameter values, the copy comes back on: the server must send both again",
+  "steps": [
+    "act:Pablo near:Bed EnterRelaxing --name Relax --wait 60",
+    "sleep:5",
+    "server:SACS_RECORDER tune sacs.seed-copy 0",
+    "client:SACS_RECORDER tune sacs.seed-copy 0",
+    "rejoin:warm",
+    "sleep:10",
+    "server:SACS_RECORDER tune sacs.seed-copy 2",
+    "client:SACS_RECORDER tune sacs.seed-copy 2",
+    "sleep:8",
+    "client:SACS_RECORDER seed-reset",
+    "sleep:20",
+    "server:SACS_RECORDER tune sacs.seed-copy default",
+    "client:SACS_RECORDER tune sacs.seed-copy default"
+  ],
+  "after": [
+    "rose:server:SACS_RECORDER status:reseeded",
+    "rose:server:SACS_RECORDER status:resent",
+    "assert:client:SACS_RECORDER seed-coverage 25 0:unseeded:0(?!\\d)"
+  ],
+  "expect": "pass"
+}
