@@ -34,7 +34,7 @@
     <ProjectReference Include="..\SimsOnline.Protocol\SimsOnline.Protocol.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Sentry" Version="6.12.1" />
-    <PackageReference Include="Sentry.Profiling" Version="6.12.1" />
+    <PackageReference Include="Sentry" Version="6.13.0" />
+    <PackageReference Include="Sentry.Profiling" Version="6.13.0" />
   </ItemGroup>
 </Project>
