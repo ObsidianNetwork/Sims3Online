@@ -5908,7 +5908,7 @@ internal static partial class Program
 			"dump" when args[1] == fromNow => "seq=10;more=0\n",
 			"dump" => dumps.Count > 0 ? dumps.Dequeue() : "seq=" + args[1] + ";more=0\n",
 			"snapshot" => "drivers=7",
-			"snapshot-driver" when args[2] == "0" => "lines=2;next=2\n0|A|7|1|1|2|3|0\n0|S|7|9|1",
+			"snapshot-driver" when args[2] == "0" => "lines=3;next=3\n0|Z|1\n0|A|7|1|1|2|3|0\n0|S|7|9|1",
 			"snapshot-driver" => "lines=1;next=-1\n0|R|7|9|5|0|1",
 			_ => null
 		};
@@ -5928,8 +5928,8 @@ internal static partial class Program
 		dumps.Enqueue("seq=12;more=1\n11|P|7|4|5\n12|R|7|9|6|0|1");
 		dumps.Enqueue("seq=13;more=0\n13|X|7");
 		int lines = session.PublishPresentationAsync(enqueue, CancellationToken.None).GetAwaiter().GetResult();
-		Assert(host.SacsRecorderCalls.SequenceEqual(new[] { "snapshot 1,2", "snapshot-driver 7 0", "snapshot-driver 7 2", "dump 10 1,2", "dump 12 1,2" }), "New targets get history first, then the targeted dump pages. Got " + string.Join(" / ", host.SacsRecorderCalls));
-		Assert(lines == 6 && sent.Count == 1 && sent[0] is ServerEvent.SimAnimation first && first.Lines.SequenceEqual(new[] { "0|A|7|1|1|2|3|0", "0|S|7|9|1", "0|R|7|9|5|0|1", "11|P|7|4|5", "12|R|7|9|6|0|1", "13|X|7" }), "History then live lines, in one SimAnimation.");
+		Assert(host.SacsRecorderCalls.SequenceEqual(new[] { "snapshot 1,2", "snapshot-driver 7 0", "snapshot-driver 7 3", "dump 10 1,2", "dump 12 1,2" }), "New targets get history first, then the targeted dump pages. Got " + string.Join(" / ", host.SacsRecorderCalls));
+		Assert(lines == 7 && sent.Count == 1 && sent[0] is ServerEvent.SimAnimation first && first.Lines.SequenceEqual(new[] { "0|Z|1", "0|A|7|1|1|2|3|0", "0|S|7|9|1", "0|R|7|9|5|0|1", "11|P|7|4|5", "12|R|7|9|6|0|1", "13|X|7" }), "Reset and history then live lines, in one SimAnimation.");
 		Assert(session.PresentationTargetCount == 2, "Two targets streamed.");
 		host.SacsRecorderCalls.Clear();
 		sent.Clear();
@@ -5957,6 +5957,7 @@ internal static partial class Program
 	{
 		InMemoryAuthoritativeHost host = new InMemoryAuthoritativeHost();
 		AuthoritativeSession session = new AuthoritativeSession(host);
+		string[] joinHistory = { "0|Z|1", "0|A|7|1|1|2|3|0", "0|S|7|9|1", "0|R|7|9|5|0|1" };
 		string fromNow = PresentationStream.FromNowCursor.ToString(System.Globalization.CultureInfo.InvariantCulture);
 		host.SacsRecorderHandler = args => args[0] switch
 		{
@@ -5964,7 +5965,7 @@ internal static partial class Program
 			"dump" when args[1] == fromNow => "seq=10;more=0\n",
 			"dump" => "seq=" + args[1] + ";more=0\n",
 			"snapshot" => "drivers=7",
-			"snapshot-driver" => "lines=1;next=-1\n0|A|7|1|1|2|3|0",
+			"snapshot-driver" => "lines=4;next=-1\n" + string.Join("\n", joinHistory),
 			_ => null
 		};
 		List<ServerEvent> broadcast = new List<ServerEvent>();
@@ -5995,8 +5996,8 @@ internal static partial class Program
 		session.HandleCommandAsync(new ClientCommand.JoinSession(Guid.NewGuid(), 2, "bob"), CancellationToken.None).GetAwaiter().GetResult();
 		session.UpdateInterestLotIndex(index); // the join refreshed the index from this host's empty snapshot
 		session.PublishPresentationAsync(enqueue, CancellationToken.None, enqueueToPlayer).GetAwaiter().GetResult();
-		Assert(toPlayer.ContainsKey(2) && toPlayer[2].Count == 1 && toPlayer[2][0] is ServerEvent.SimAnimation history && history.Lines.Contains("0|A|7|1|1|2|3|0"),
-			"Bob alone gets the known targets' history.");
+		Assert(toPlayer.ContainsKey(2) && toPlayer[2].Count == 1 && toPlayer[2][0] is ServerEvent.SimAnimation history && history.Lines.SequenceEqual(joinHistory),
+			"Bob alone gets the reset, driver setup and state history in order.");
 		Assert(broadcast.Count == 0 && !toPlayer.ContainsKey(1), "Alice gets none of it again.");
 		Assert(host.SacsRecorderCalls.Contains("snapshot 1,2"), "The history covers every known target. Got " + string.Join(" / ", host.SacsRecorderCalls));
 		toPlayer.Clear();

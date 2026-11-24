@@ -261,6 +261,7 @@ namespace SimsOnlineServerHost
                 }
             }
 
+            Dictionary<ulong, bool> describedVehicles = new Dictionary<ulong, bool>();
             for (LinkedListNode<KeyValuePair<string, string>> node = sOrder.First; node != null; node = node.Next)
             {
                 string line = node.Value.Value;
@@ -268,8 +269,20 @@ namespace SimsOnlineServerHost
                 ulong obj;
                 // A lot-keyed world call (Wl: floor features, holiday lights) is every game's: lots are not streamed targets.
                 if (f.Length > 1 && f[0] != "Ob" && ulong.TryParse(f[1], NumberStyles.None, CultureInfo.InvariantCulture, out obj)
-                    && (targets == null || f[0] == "Wl" || f[0] == "En" || targets.ContainsKey(obj) || SacsRecorder.Props.ContainsKey(obj)))
+                    && (targets == null || f[0] == "Wl" || f[0] == "En" || targets.ContainsKey(obj) || SacsRecorder.Props.ContainsKey(obj)
+                        || ((f[0] == "Vp" || f[0] == "Vs") && VehicleRecorder.Concerns(obj, targets))))
                 {
+                    ulong vehicle = obj;
+                    if (f[0] == "Vh" && f.Length > 2)
+                    {
+                        ulong.TryParse(f[2], NumberStyles.None, CultureInfo.InvariantCulture, out vehicle);
+                    }
+                    if ((f[0] == "Vh" || f[0] == "Vp" || f[0] == "Vs") && vehicle != 0uL
+                        && !describedVehicles.ContainsKey(vehicle))
+                    {
+                        SacsRecorder.DescribeSnapshotObject(vehicle, lines);
+                        describedVehicles[vehicle] = true;
+                    }
                     lines.Add("0|" + line);
                 }
             }

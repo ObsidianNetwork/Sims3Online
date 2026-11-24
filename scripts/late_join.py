@@ -11,6 +11,7 @@ states it passes through, with any request that hands the Sim to another machine
 Side effect: like a real join, the drivers it lists count as forwarded, so their next lines also go to clients (they
 already do for Sims on a player's lot).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -29,9 +30,39 @@ SERVER = "127.0.0.1:34029"
 STATE = "4294967280"
 
 
+def check_liveness(ids: list[str]) -> int:
+    """Verify native completion and live posture/interaction ownership against actual history selection."""
+    wanted = "," + ",".join(str(int(value)) for value in ids) + ","
+    template = ROOT / "scripts/probes/HistoryLivenessProbe.cs"
+    source = template.read_text(encoding="utf-8").replace(
+        'private const string TargetIds = "";',
+        f'private const string TargetIds = "{wanted}";',
+    )
+    generated = ROOT / ".omo/run/act/HistoryLivenessProbe.cs"
+    generated.parent.mkdir(parents=True, exist_ok=True)
+    generated.write_text(source, encoding="utf-8")
+    result = subprocess.run(
+        [sys.executable, "scripts/bridgectl.py", "--endpoint", SERVER, "probe", str(generated)],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=90,
+        check=False,
+    )
+    print(result.stdout, end="")
+    if result.stderr:
+        print(result.stderr, file=sys.stderr, end="")
+    return 0 if result.returncode == 0 and re.search(r"\bok\s*=\s*true\b", result.stdout) else 1
+
+
 def recorder(*args: str) -> list[str]:
-    out = subprocess.run([sys.executable, "scripts/bridgectl.py", "--endpoint", SERVER, "SACS_RECORDER", *args],
-                         cwd=ROOT, capture_output=True, text=True, timeout=60).stdout
+    out = subprocess.run(
+        [sys.executable, "scripts/bridgectl.py", "--endpoint", SERVER, "SACS_RECORDER", *args],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    ).stdout
     return out.splitlines()
 
 
@@ -65,8 +96,18 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("sims", nargs="*", default=["Jennifer", "Pablo"])
     p.add_argument("--full", action="store_true")
     p.add_argument("--state", action="store_true")
+    p.add_argument(
+        "--check-liveness",
+        action="store_true",
+        help="fail if history loses an owned/active driver or includes a finished unowned driver (SimLink v16)",
+    )
     a = p.parse_args(argv)
-    ids = [SIMS.get(s.lower(), s) for s in a.sims]
+    ids = [SIMS.get(s.lower()) or s for s in a.sims]
+    if a.check_liveness:
+        try:
+            return check_liveness(ids)
+        except ValueError:
+            p.error("--check-liveness needs numeric object IDs or known Sim names")
     reply = recorder("snapshot", ",".join(ids))
     handles = next((ln.split("=", 1)[1] for ln in reply if ln.startswith("drivers=")), "-")
     if handles == "-":
@@ -80,15 +121,25 @@ def main(argv: list[str] | None = None) -> int:
         total += len(lines)
         if handle == STATE:
             kinds = Counter(ln.split("|")[1] for ln in lines)
-            print(f"== {handle} boundary state: {len(lines)} lines ({' '.join(f'{k}={v}' for k, v in kinds.most_common())})")
+            print(
+                f"== {handle} boundary state: {len(lines)} lines ({' '.join(f'{k}={v}' for k, v in kinds.most_common())})"
+            )
         else:
             first = next((ln for ln in lines if ln.split("|")[1] == "A"), "")
             f = first.split("|")
             machine = machine_of(f)
-            states = [names.name32(ln.split("|")[4]) for ln in lines if ln.split("|")[1] in ("E", "R") and len(ln.split("|")) > 4]
-            bridges = [ln for ln in lines if ln.split("|")[1] == "R" and len(ln.split("|")) > 10 and ln.split("|")[9] != "0"]
-            print(f"== {handle} {machine} host={f[3] if len(f) > 3 else '?'}: {len(lines)} lines; states {' > '.join(states[-8:]) or '-'}"
-                  + (f"; hands over to {', '.join(ln.split('|')[9] for ln in bridges)}" if bridges else ""))
+            states = [
+                names.name32(ln.split("|")[4])
+                for ln in lines
+                if ln.split("|")[1] in ("E", "R") and len(ln.split("|")) > 4
+            ]
+            bridges = [
+                ln for ln in lines if ln.split("|")[1] == "R" and len(ln.split("|")) > 10 and ln.split("|")[9] != "0"
+            ]
+            print(
+                f"== {handle} {machine} host={f[3] if len(f) > 3 else '?'}: {len(lines)} lines; states {' > '.join(states[-8:]) or '-'}"
+                + (f"; hands over to {', '.join(ln.split('|')[9] for ln in bridges)}" if bridges else "")
+            )
         if a.full or a.state:
             for ln in lines:
                 print("   " + decode(ln))

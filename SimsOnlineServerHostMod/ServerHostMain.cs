@@ -4820,6 +4820,7 @@ namespace SimsOnlineServerHost
             else if (action == "ring-off")
             {
                 SacsRecorder.RingEnabled = false;
+                VehicleRecorder.Reset();
                 SacsRecorder.TraceTimestamps = false;
                 state = "ring=off";
             }
@@ -6290,6 +6291,7 @@ namespace SimsOnlineServerHost
                         continue;
                     }
 
+                    VehicleRecorder.Observe(sim);
                     string posture = sim.Posture == null ? "-" : sim.Posture.GetType().Name;
                     ulong container = 0uL;
                     int sacsPosture = 0;
@@ -6433,6 +6435,7 @@ namespace SimsOnlineServerHost
                     SwallowedErrors.Note();
                 }
             }
+            VehicleRecorder.Publish();
         }
 
         // While the presentation stream describes a Sim, the snapshot position mirror (APPLY_POSITIONS) leaves it alone
@@ -10149,6 +10152,7 @@ namespace SimsOnlineServerHost
             // no such object of its own and shows the server's.
             ResourceKey created;
             bool carryable = obj is Sims3.Gameplay.ActorSystems.ICarryable;
+            bool vehicle = obj is Sims3.Gameplay.Objects.Vehicles.Vehicle;
             bool runtime = SimulatorRecorder.TryGetKey(id, out created);
             // A carryable this game made and left in the world with no parent (a newspaper on the lawn, put down by a Sim
             // no client streams, or made in place): the prop poll watches it, so its visibility (H) and placement reach
@@ -10160,7 +10164,7 @@ namespace SimsOnlineServerHost
             }
 
             return obj.GetType().FullName + "|" + key.InstanceId.ToString(c) + "|" + key.TypeId.ToString(c) + "|" + key.GroupId.ToString(c)
-                + "|" + (carryable ? "prop" : runtime ? "spawn" : "fixed")
+                + "|" + (vehicle ? "vehicle" : carryable ? "prop" : runtime ? "spawn" : "fixed")
                 + "|" + Float(position.x) + "|" + Float(position.y) + "|" + Float(position.z)
                 + "|" + Float(forward.x) + "|" + Float(forward.y) + "|" + Float(forward.z);
         }
@@ -10235,6 +10239,7 @@ namespace SimsOnlineServerHost
 
             CultureInfo c = CultureInfo.InvariantCulture;
             ulong id = ulong.Parse(f[2], c);
+            bool vehicle = f[7] == "vehicle";
             if (sObjectAliases.ContainsKey(id))
             {
                 return true;
@@ -10266,7 +10271,7 @@ namespace SimsOnlineServerHost
             }
 
             GameObject own = new ObjectGuid(id).ObjectFromId<GameObject>();
-            if (own != null && own.GetType().FullName == f[3])
+            if (!vehicle && own != null && own.GetType().FullName == f[3])
             {
                 sObjectsShared++; // the same object under the same id (furniture from the save)
                 return true;
@@ -10291,7 +10296,7 @@ namespace SimsOnlineServerHost
                 // Not one that already stands for a server object: a copy made here is no matched object, and two
                 // server books in two seated Sims' hands matched the one copy made for the first, so only one showed
                 // (client 2, 2026-10-21: Jennifer's and Pablo's books both aliased to one local copy).
-                if (candidate == null || candidate is Sim || candidate.GetType().FullName != f[3] || sMatchedLocal.ContainsKey(candidate.ObjectId.Value)
+                if (vehicle || candidate == null || candidate is Sim || candidate.GetType().FullName != f[3] || sMatchedLocal.ContainsKey(candidate.ObjectId.Value)
                     || IsAliasTarget(candidate.ObjectId))
                 {
                     continue;
@@ -10316,7 +10321,9 @@ namespace SimsOnlineServerHost
             try
             {
                 ResourceKey key = new ResourceKey(ulong.Parse(f[4], c), uint.Parse(f[5], c), uint.Parse(f[6], c));
-                GameObject copy = GlobalFunctions.CreateObjectOutOfWorld(key) as GameObject;
+                GameObject copy = (vehicle
+                    ? GlobalFunctions.CreateObjectOutOfWorld(key, typeof(PresentationObject).AssemblyQualifiedName, null)
+                    : GlobalFunctions.CreateObjectOutOfWorld(key)) as GameObject;
                 if (copy == null)
                 {
                     sObjectsFailed++;
@@ -10333,7 +10340,7 @@ namespace SimsOnlineServerHost
                 // a furniture copy stays hidden (the client's own room is what the player sees). A spawn shows where the
                 // server's is (the client has no such object of its own: an ash pile, a puddle).
                 copy.AddToWorld();
-                if (f[7] == "spawn")
+                if (f[7] == "spawn" || vehicle)
                 {
                     sSpawnsShown++;
                 }

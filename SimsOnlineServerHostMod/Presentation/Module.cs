@@ -24,8 +24,13 @@ namespace SimsOnline.Presentation
             PresentationModules.Register("Rh", new PresentationLineHandler(Walks.ReplayRouteHalt));
             PresentationModules.Register("Ru", new PresentationLineHandler(Walks.ReplayRouteStyle));
             PresentationModules.Register("Pz", new PresentationLineHandler(Walks.ReplayStreamPosition));
+            PresentationModules.Register("Vh", new PresentationLineHandler(Vehicles.Replay));
+            PresentationModules.Register("Vp", new PresentationLineHandler(Vehicles.Replay));
+            PresentationModules.Register("Vs", new PresentationLineHandler(Vehicles.Replay));
+            PresentationModules.Register("Ve", new PresentationLineHandler(Vehicles.Replay));
             PresentationModules.OnTick(new PresentationTick(Walks.Tick));
-            PresentationModules.OnWalkState(new PresentationWalkState(Walks.State));
+            PresentationModules.OnTick(new PresentationTick(Vehicles.Tick));
+            PresentationModules.OnWalkState(new PresentationWalkState(WalkState));
             PresentationModules.OnReset(new PresentationReset(Reset));
             PresentationModules.OnReport(new PresentationReport(Report));
         }
@@ -38,12 +43,18 @@ namespace SimsOnline.Presentation
             Refusals.Reset();
             Uses.Reset();
             Walks.Reset();
+            Vehicles.Reset();
+        }
+
+        private static int WalkState(ulong localSim)
+        {
+            return Walks.State(localSim) | (Vehicles.HoldsPosition(localSim) ? PresentationModules.WalkHoldsPlace : 0);
         }
 
         // Inside the shell's SACS_REPLAY 00 report: ";" starts the module's own fields (positions=, routes=).
         private static string Report()
         {
-            return "moodlets:" + Moodlets.Report() + ",inventories:" + Inventories.Report() + ",refusals:" + Refusals.Report() + ",uses:" + Uses.Report() + ";" + Walks.Report();
+            return "moodlets:" + Moodlets.Report() + ",inventories:" + Inventories.Report() + ",refusals:" + Refusals.Report() + ",uses:" + Uses.Report() + ";vehicles=" + Vehicles.Report() + ";" + Walks.Report();
         }
     }
 }

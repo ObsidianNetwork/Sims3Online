@@ -63,6 +63,8 @@
     <Compile Include="..\SimsOnlineServerHostMod\WalkerCopyLine.cs" Link="Linked\WalkerCopyLine.cs" />
     <Compile Include="..\SimsOnlineServerHostMod\WalkHaltTiming.cs" Link="Linked\WalkHaltTiming.cs" />
     <Compile Include="..\SimsOnlineServerHostMod\RouteLegIndex.cs" Link="Linked\RouteLegIndex.cs" />
+    <Compile Include="..\SimsOnlineServerHostMod\VehicleTravel.cs" Link="Linked\VehicleTravel.cs" />
+    <Compile Include="..\SimsOnlineServerHostMod\Presentation\RouteStreamIdentity.cs" Link="Linked\RouteStreamIdentity.cs" />
     <Compile Include="..\SimsOnlineServerHostMod\LineKindCounts.cs" Link="Linked\LineKindCounts.cs" />
     <!-- source-link where SET_WORLD_TIME moves the clock (nearest week, same minute left alone). -->
     <Compile Include="..\SimsOnlineServerHostMod\WorldClockSet.cs" Link="Linked\WorldClockSet.cs" />

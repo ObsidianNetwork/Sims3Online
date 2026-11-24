@@ -39,6 +39,10 @@ namespace SimsOnline.Presentation
         // ClientRouteMaxHold); the copy moves on it now (not stopping).
         internal static int State(ulong localSim)
         {
+            if (Vehicles.HoldsPosition(localSim))
+            {
+                return 0; // Vehicle ownership never holds animation/posture lines behind a walk.
+            }
             ClientRoute entry;
             if (!sClientRoutes.TryGetValue(localSim, out entry) || !entry.Running)
             {
@@ -89,6 +93,7 @@ namespace SimsOnline.Presentation
 
             sClientRoutes.Clear();
             sMirrorTargets.Clear();
+            sVehiclePendingRoutes.Clear();
         }
 
         internal static string Report()
@@ -134,6 +139,11 @@ namespace SimsOnline.Presentation
         private static float PostureSnapDistance { get { return Tunables.Get("mirror.posture-snap", 1.5f); } }
         private static float FacingApplyCos { get { return Tunables.Get("mirror.facing-cos", 0.985f); } }
 
+        internal static void ForgetMirror(ulong localSim)
+        {
+            sMirrorTargets.Remove(localSim);
+        }
+
         internal static bool ReplayStreamPosition(string[] f)
         {
             if (f.Length < 6)
@@ -146,6 +156,12 @@ namespace SimsOnline.Presentation
             if (!simId.IsValid)
             {
                 return false;
+            }
+
+            if (Vehicles.HoldsPosition(simId.Value))
+            {
+                sMirrorTargets.Remove(simId.Value);
+                return true;
             }
 
             Sim sim = simId.ObjectFromId<Sim>();
@@ -300,6 +316,12 @@ namespace SimsOnline.Presentation
             List<ulong> gone = null;
             foreach (KeyValuePair<ulong, MirrorTarget> pair in sMirrorTargets)
             {
+                if (Vehicles.HoldsPosition(pair.Key))
+                {
+                    (gone = gone ?? new List<ulong>()).Add(pair.Key);
+                    continue;
+                }
+
                 MirrorTarget pending = pair.Value;
                 try
                 {
@@ -611,6 +633,7 @@ namespace SimsOnline.Presentation
             // The server's walk style leg by leg (its Rs for each leg, in order), and the copy's leg now (-1: none yet).
             public readonly List<uint> LegStyles = new List<uint>();
             public int CopyLeg = -1;
+            public readonly Dictionary<string, bool> SourceRoutes = new Dictionary<string, bool>();
         }
 
         private sealed class ClientRouteRunner
@@ -629,6 +652,36 @@ namespace SimsOnline.Presentation
         }
 
         private static readonly Dictionary<ulong, ClientRoute> sClientRoutes = new Dictionary<ulong, ClientRoute>();
+        private static readonly Dictionary<ulong, string[]> sVehiclePendingRoutes = new Dictionary<ulong, string[]>();
+
+        internal static void TakeVehicleOwnership(ulong localSim)
+        {
+            sMirrorTargets.Remove(localSim);
+            ClientRoute entry;
+            if (sClientRoutes.TryGetValue(localSim, out entry))
+            {
+                entry.Pending = false;
+                entry.ServerEnded = false;
+                if (entry.Current != null)
+                {
+                    StopClientRoute(entry);
+                }
+                entry.Generation++; // A late DoRoute return may neither snap nor release another owner's state.
+                entry.Running = false;
+                sClientRoutes.Remove(localSim);
+            }
+            PresentationApi.ReleaseHeldLines(localSim);
+        }
+
+        internal static void ReleaseVehicleOwnership(ulong localSim)
+        {
+            string[] pending;
+            if (sVehiclePendingRoutes.TryGetValue(localSim, out pending))
+            {
+                sVehiclePendingRoutes.Remove(localSim);
+                ReplayRoute(pending);
+            }
+        }
         private static readonly TimeSpan ClientRouteMaxHold = TimeSpan.FromSeconds(20);
         // STOPGAP(boundary-recording): walk-end-snap a copy that ended its walk elsewhere jumps to the server's end; it should end there itself.
         private static float ClientRouteSnapDistance { get { return Tunables.Get("walk.end-snap", 0.1f); } }
@@ -691,6 +744,13 @@ namespace SimsOnline.Presentation
                 return false;
             }
 
+            if (Vehicles.HoldsPosition(simId.Value))
+            {
+                sVehiclePendingRoutes[simId.Value] = f;
+                return true;
+            }
+
+            string sourceRoute = RouteStreamIdentity.StartHandle(f);
             ClientRoute entry;
             if (!sClientRoutes.TryGetValue(simId.Value, out entry))
             {
@@ -715,6 +775,7 @@ namespace SimsOnline.Presentation
                 entry.ServerEnded = false;
                 entry.HaltPending = false;
                 entry.Legs++;
+                if (sourceRoute.Length > 0) entry.SourceRoutes[sourceRoute] = true;
                 Sim legSim = simId.ObjectFromId<Sim>();
                 if (legSim != null)
                 {
@@ -750,6 +811,8 @@ namespace SimsOnline.Presentation
             }
 
             entry.Goal = goal;
+            entry.SourceRoutes.Clear();
+            if (sourceRoute.Length > 0) entry.SourceRoutes[sourceRoute] = true;
             entry.TurnOnly = false;
             Vector3[] waypoints = f.Length > 9 ? ParseWaypoints(f[9]) : null;
             entry.HasSpec = f.Length > 14;
@@ -1393,6 +1456,10 @@ namespace SimsOnline.Presentation
         {
             Route route = sim.CreateRoute();
             route.ExecutionFromNonSimTaskIsSafe = true;
+            // These routes present on-foot legs only. Vehicle travel has its own authoritative
+            // owner; allowing the local planner to hire a taxi runs client vehicle gameplay.
+            route.SetOption(Route.RouteOption.EnablePlanningAsCar, false);
+            route.SetOption2(Route.RouteOption2.EnablePlanningAsBoat, false);
             if (PresentationApi.PresenterOn())
             {
                 ConfigurePuppetRoute(sim, route);
@@ -1458,10 +1525,24 @@ namespace SimsOnline.Presentation
         internal static bool ReplayRouteEnd(string[] f)
         {
             ObjectGuid simId = PresentationApi.ReplayObject(ulong.Parse(f[2], CultureInfo.InvariantCulture));
+            if (simId.IsValid && Vehicles.HoldsPosition(simId.Value))
+            {
+                string[] pending;
+                if (sVehiclePendingRoutes.TryGetValue(simId.Value, out pending)
+                    && RouteStreamIdentity.EndMatches(pending, f))
+                {
+                    sVehiclePendingRoutes.Remove(simId.Value); // This leg finished before the handoff back.
+                }
+                return true;
+            }
             ClientRoute entry;
             if (!simId.IsValid || !sClientRoutes.TryGetValue(simId.Value, out entry))
             {
                 return false;
+            }
+            if (f.Length > 6 && entry.SourceRoutes.Count > 0 && !entry.SourceRoutes.ContainsKey(f[6]))
+            {
+                return true; // An older route's end cannot end a new post-vehicle leg.
             }
 
             CultureInfo c = CultureInfo.InvariantCulture;

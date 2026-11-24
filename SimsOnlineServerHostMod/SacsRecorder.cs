@@ -693,6 +693,18 @@ namespace SimsOnlineServerHost
                     continue;
                 }
 
+                if (f[1] == "Vh" || f[1] == "Vp" || f[1] == "Vs" || f[1] == "Ve")
+                {
+                    ulong vehicleObject;
+                    if (ulong.TryParse(f[2], NumberStyles.None, CultureInfo.InvariantCulture, out vehicleObject)
+                        && (targets.ContainsKey(vehicleObject) || IsProp(vehicleObject)
+                            || (f[1] != "Vh" && VehicleRecorder.Concerns(vehicleObject, targets))))
+                    {
+                        Emit(lines, line, ref chars, false);
+                    }
+                    continue;
+                }
+
                 // item 4: slot attach / detach (SlotsRecorder) and prop visibility (H). Relevant when the
                 // object or its new parent is a target, or the object is a prop a target held.
                 if (f[1] == "T" || f[1] == "Tx" || f[1] == "B" || f[1] == "U" || f[1] == "H" || f[1] == "Hd" || f[1] == "Ou" || f[1] == "Qu" || f[1] == "Rt" || f[1] == "Rte" || f[1] == "Pz" || f[1] == "Po" || f[1] == "Pl" || f[1] == "Bf" || f[1] == "Rl" || f[1] == "Cv" || f[1] == "Vx" || f[1] == "An" || f[1] == "Wd" || f[1] == "Ob" || f[1] == "Rs" || f[1] == "Rx" || f[1] == "Rh" || f[1] == "Ru" || f[1] == "Au" || f[1] == "Rg" || f[1] == "Ci" || f[1] == "Iv" || f[1] == "Rf" || f[1] == "Us" || f[1] == "Lk")
@@ -1057,7 +1069,15 @@ namespace SimsOnlineServerHost
 
             string kind = f[1];
             ulong id;
-            if (kind == "A" && f.Length > 3 && ulong.TryParse(f[3], NumberStyles.None, CultureInfo.InvariantCulture, out id))
+            if (kind == "Vh" && f.Length > 3 && ulong.TryParse(f[3], NumberStyles.None, CultureInfo.InvariantCulture, out id))
+            {
+                AnnounceObject(id, lines, ref chars, always, true);
+            }
+            else if ((kind == "Vp" || kind == "Vs" || kind == "Ve") && ulong.TryParse(f[2], NumberStyles.None, CultureInfo.InvariantCulture, out id))
+            {
+                AnnounceObject(id, lines, ref chars, always, true);
+            }
+            else if (kind == "A" && f.Length > 3 && ulong.TryParse(f[3], NumberStyles.None, CultureInfo.InvariantCulture, out id))
             {
                 AnnounceObject(id, lines, ref chars, always);
             }
@@ -1146,6 +1166,12 @@ namespace SimsOnlineServerHost
                     AnnounceObject(id, lines, ref chars, always);
                 }
             }
+        }
+
+        internal static void DescribeSnapshotObject(ulong id, List<string> lines)
+        {
+            int chars = 0;
+            AnnounceObject(id, lines, ref chars, true);
         }
 
         private static void Emit(List<string> lines, string line, ref int chars, bool always)

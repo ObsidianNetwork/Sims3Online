@@ -394,6 +394,7 @@ namespace SimsOnlineServerHost
                 ulong sim = SimFollower();
                 if (sim == 0uL)
                 {
+                    VehicleRecorder.Start(this);
                     return;
                 }
 
