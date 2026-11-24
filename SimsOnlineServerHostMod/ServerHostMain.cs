@@ -5356,7 +5356,8 @@ namespace SimsOnlineServerHost
                 + ",pointsOwn:" + AudioRecorder.PointsOwn.ToString(ci) + ",pointsSent:" + SacsRecorder.PointSoundsSent.ToString(ci)
                 + ",stings:" + AudioRecorder.Stings.ToString(ci) + ",stingsSent:" + sStingsSent.ToString(ci)
                 + ",stingsUnowned:" + AudioRecorder.StingsUnowned.ToString(ci) + ";lookat=" + LookAtRecorder.Report()
-                + ";worldServer=lines:" + WorldRecorder.Lines.ToString(ci)));
+                + ";worldServer=lines:" + WorldRecorder.Lines.ToString(ci)
+                + ";lineClock=" + LineClock.Report()));
         }
 
         // presentation replay spike. SACS_REPLAY|corr|<hex lines> (client role): the server's
@@ -8017,7 +8018,7 @@ namespace SimsOnlineServerHost
             }
         }
         // This client's copy (local id) is walking on the server's path (the module's Walks): placements wait for the walk.
-        private static bool IsClientWalking(ulong localSim)
+        internal static bool IsClientWalking(ulong localSim)
         {
             return (PresentationModules.WalkState(localSim) & PresentationModules.WalkMoving) != 0;
         }
@@ -10425,6 +10426,8 @@ namespace SimsOnlineServerHost
             CultureInfo c = CultureInfo.InvariantCulture;
             EnvironmentReplay.Reset();
             PresentationModules.ResetModule();
+            LineDelay.Reset();
+            TransformPlayout.Reset();
             int copies = 0;
             int effects = 0;
             int drivers = 0;
@@ -10852,6 +10855,8 @@ namespace SimsOnlineServerHost
             return true;
         }
 
+        private static readonly List<string> sRingTakenOnArrival = new List<string>();
+
         private static void DrainClientRing()
         {
             if (!SimLinkShadow.RingEnabled || sCurrentRole != "client" || SacsRecorder.Current == null)
@@ -10861,6 +10866,8 @@ namespace SimsOnlineServerHost
 
             try
             {
+                // Lines wait the line delay (LineDelay.cs) so a client shows everything the same time behind the server.
+                LineDelay.ApplyDue(new Converter<string[], string>(ApplyReplayBatch));
                 for (int reads = 0; reads < RingBatchesPerDrain; reads++)
                 {
                     string[] lines = SimLinkShadow.ReadInboundLines();
@@ -10869,7 +10876,17 @@ namespace SimsOnlineServerHost
                         return;
                     }
 
-                    ApplyReplayBatch(lines);
+                    sRingTakenOnArrival.Clear();
+                    lines = LineDelay.Arrive(lines, new Converter<ulong, ObjectGuid>(ReplayObject), new Predicate<ulong>(IsClientWalking), sRingTakenOnArrival);
+                    if (sRingTakenOnArrival.Count > 0)
+                    {
+                        LineKindCounts.AddLines(sReplayReceivedByKind, sRingTakenOnArrival);
+                    }
+
+                    if (lines != null)
+                    {
+                        ApplyReplayBatch(lines);
+                    }
                 }
             }
             catch (Exception ex)
@@ -10960,7 +10977,8 @@ namespace SimsOnlineServerHost
                     releasedEnd = releasedStart; // counted
                 }
 
-                string line = work[wi];
+                // Numbers this game's parser returns NaN for are replaced before anything reads the line (WireNumbers.cs).
+                string line = WireNumbers.Clean(work[wi]);
                 string[] f = line.Split('|');
                 if (f.Length < 2 || (f.Length < 3 && f[1] != "Ne" && f[1] != "Rt" && f[1] != "Vp"))
                 {
@@ -10970,6 +10988,22 @@ namespace SimsOnlineServerHost
                 try
                 {
                     string kind = f[1];
+                    if (kind == "Ck")
+                    {
+                        // The server's clock line (LineClock.cs). With the line delay on it is read on arrival instead.
+                        LineClock.Arrived(f[2], f.Length > 3 ? f[3] : null, DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond);
+                        applied++;
+                        continue;
+                    }
+
+                    MotionWatch.NoteApplied(line); // only while a watch runs
+                    // A position of a Sim riding in an object the playout buffer is moving waits for that object.
+                    if (kind == "Pz" && TransformPlayout.Defer(line, f, new Converter<ulong, ObjectGuid>(ReplayObject), new Converter<string[], string>(ApplyReplayBatch)))
+                    {
+                        applied++;
+                        continue;
+                    }
+
                     // A presentation module's handler for this kind (PresentationModules) comes before the built-in one.
                     PresentationLineHandler moduleHandler = PresentationModules.HandlerFor(kind);
                     if (moduleHandler != null)
@@ -11148,6 +11182,13 @@ namespace SimsOnlineServerHost
 
                     if (kind == "Wd" || kind == "Ob")
                     {
+                        // A moving object's transforms go through the playout buffer when it is on (TransformPlayout).
+                        if (kind == "Ob" && TransformPlayout.Take(f, new Converter<ulong, ObjectGuid>(ReplayObject), new Predicate<ulong>(IsClientWalking)))
+                        {
+                            applied++;
+                            continue;
+                        }
+
                         string replayContext = SacsRecorder.LocalContext;
                         SacsRecorder.LocalContext = "server placement (Ob)";
                         bool replayed = BoundaryReplay.Replay(kind == "Wd" ? BoundaryReplay.World : BoundaryReplay.Objects, f, new Converter<ulong, ObjectGuid>(ReplayObject),
@@ -11156,6 +11197,11 @@ namespace SimsOnlineServerHost
                         if (replayed)
                         {
                             applied++;
+                            if (kind == "Ob")
+                            {
+                                TransformGuard.AfterLine(f, new Converter<ulong, ObjectGuid>(ReplayObject)); // a facing the game left invalid
+                                PresentationModules.Placed(f); // the module's position mirror follows the server's placement
+                            }
                         }
                         else
                         {
@@ -11697,6 +11743,9 @@ namespace SimsOnlineServerHost
                 + ",released:applied:" + sRouteReleaseApplied.ToString(c) + "/skipped:" + sRouteReleaseSkipped.ToString(c) + "/failed:" + sRouteReleaseFailed.ToString(c) + ";outfits=changed:" + sOutfitChanges.ToString(c) + ",missing:" + sOutfitMissing.ToString(c)
                 + ";totalApplied=" + sReplayApplied.ToString(c) + ";totalSkipped=" + sReplaySkipped.ToString(c)
                 + ";applyUtcTicks=" + applyUtcTicks.ToString(c)
+                + ";playout=" + TransformPlayout.Report()
+                + ";transformGuard=" + TransformGuard.Report().Replace(';', ',')
+                + ";wireNumbers=" + WireNumbers.Report().Replace(';', ',')
                 + ";errors=" + sReplayErrors.ToString(c) + ";lastError=" + sReplayLastError);
         }
 

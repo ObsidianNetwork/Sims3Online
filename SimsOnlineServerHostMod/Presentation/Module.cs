@@ -24,6 +24,7 @@ namespace SimsOnline.Presentation
             PresentationModules.Register("Rh", new PresentationLineHandler(Walks.ReplayRouteHalt));
             PresentationModules.Register("Ru", new PresentationLineHandler(Walks.ReplayRouteStyle));
             PresentationModules.Register("Pz", new PresentationLineHandler(Walks.ReplayStreamPosition));
+            PresentationModules.Register(PresentationModules.PlacedKind, new PresentationLineHandler(Walks.ServerPlaced));
             PresentationModules.Register("Vh", new PresentationLineHandler(Vehicles.Replay));
             PresentationModules.Register("Vp", new PresentationLineHandler(Vehicles.Replay));
             PresentationModules.Register("Vs", new PresentationLineHandler(Vehicles.Replay));

@@ -115,6 +115,30 @@ namespace SimsOnlineServerHost
             return sHandlers.Count > 0 && sHandlers.TryGetValue(kind, out handler) ? handler : null;
         }
 
+        // Not a stream kind: the shell's own call after it applied a server placement of an object (an Ob line:
+        // SetPosition, SetForward, SetTransform, SetRotation), with that line's fields. A module that keeps its own idea
+        // of where a copy belongs (Walks: the position mirror) registers a handler for it like for a stream kind, so
+        // a module without one and a shell without this call still load each other.
+        public const string PlacedKind = "Placed";
+
+        internal static void Placed(string[] fields)
+        {
+            PresentationLineHandler handler = HandlerFor(PlacedKind);
+            if (handler == null)
+            {
+                return;
+            }
+
+            try
+            {
+                handler(fields);
+            }
+            catch (Exception ex)
+            {
+                sLastError = "placed:" + ex.GetType().Name;
+            }
+        }
+
         // The active module's teardown (its own state); the shell's ResetPresentation is separate.
         internal static void ResetModule()
         {

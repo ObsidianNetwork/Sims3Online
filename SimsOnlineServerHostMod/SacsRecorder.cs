@@ -685,6 +685,13 @@ namespace SimsOnlineServerHost
                     continue;
                 }
 
+                // Stream clock ticks belong to the stream itself rather than any object; deliver to every client.
+                if (f[1] == "Ck")
+                {
+                    Emit(lines, line, ref chars, false);
+                    continue;
+                }
+
                 // Card 54's private plan records name the actor after corr, unlike native Rt.
                 // They carry no driver handle and must never enter driver scoping below.
                 if ((f[1] == "Rt" && f.Length == 7) || (f[1] == "Vp" && f.Length == 10 && f[2] == "rt"))
@@ -1282,6 +1289,18 @@ namespace SimsOnlineServerHost
         private static void Ring(string line, bool directSacs)
         {
             if (ClientBoundaryRoute.IsPlanRecord(line, false) || line.StartsWith("Ne|", StringComparison.Ordinal)) return;
+            // The stream's timeline (LineClock.cs): a clock line ahead of the first line of each tick that has lines.
+            string stamp = LineClock.ServerStamp();
+            if (stamp != null)
+            {
+                RingStore(stamp, false);
+            }
+
+            RingStore(line, directSacs);
+        }
+
+        private static void RingStore(string line, bool directSacs)
+        {
             Sequence++;
             int index = (int)(Sequence % RingCapacity);
             sRing[index] = Sequence.ToString(CultureInfo.InvariantCulture) + "|" + line;

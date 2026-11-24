@@ -94,6 +94,7 @@ namespace SimsOnline.Presentation
             sClientRoutes.Clear();
             sMirrorTargets.Clear();
             sVehiclePendingRoutes.Clear();
+            sFollowGeneration++;
         }
 
         internal static string Report()
@@ -102,7 +103,7 @@ namespace SimsOnline.Presentation
             return "positions=applied:" + sStreamPositionApplies.ToString(c) + ",deadband:" + sStreamPositionDeadband.ToString(c)
                 + ",postured:" + sStreamPositionPostured.ToString(c) + ",postureSnaps:" + sStreamPositionPostureSnaps.ToString(c)
                 + ",lastPostureSnap:" + sLastPostureSnap + ",facings:" + sStreamFacings.ToString(c) + ",facingsSettled:" + sFacingsSettled.ToString(c)
-                + ",mirrorWaits:" + sMirrorWaits.ToString(c) + ",mirrorWalks:" + sMirrorWalks.ToString(c) + ",mirrorTurns:" + sMirrorTurns.ToString(c) + ",mirrorAnimHolds:" + sMirrorAnimHolds.ToString(c)
+                + ",mirrorWaits:" + sMirrorWaits.ToString(c) + ",mirrorWalks:" + sMirrorWalks.ToString(c) + ",mirrorTurns:" + sMirrorTurns.ToString(c) + ",mirrorAnimHolds:" + sMirrorAnimHolds.ToString(c) + ",mirrorPlaced:" + sMirrorPlaced.ToString(c)
                 + ";join=settles:" + sJoinSettles.ToString(c) + ",inPlace:" + sJoinInPlace.ToString(c) + ",standing:" + sJoinStanding.ToString(c) + ",seatsLeft:" + sJoinSeatsLeft.ToString(c) + ",waits:" + sJoinWaits.ToString(c) + ",last:" + sLastJoinSettle
                 + ";routes=received:" + sRoutesReceived.ToString(c) + ",started:" + sRoutesStarted.ToString(c) + ",planFailed:" + sRoutesPlanFailed.ToString(c)
                 + ",fromPath:" + sRoutesFromPath.ToString(c) + ",pathOffGoal:" + sRoutesPathOffGoal.ToString(c) + ",chained:" + sRoutesChained.ToString(c) + ",legs:" + sRoutesLegs.ToString(c)
@@ -110,11 +111,12 @@ namespace SimsOnline.Presentation
                 + ",lagMaxAt:" + sRouteLagMaxAt
                 + ",pathFails:" + (sRouteFailDetails.Length == 0 ? "-" : sRouteFailDetails.Replace(',', '/'))
                 + ",done:" + sRoutesDone.ToString(c) + ",failed:" + sRoutesFailed.ToString(c) + ",exceptions:" + sRoutesExceptions.ToString(c)
-                + ",held:" + sRoutesHeldApplies.ToString(c) + ",snaps:" + sRoutesSnaps.ToString(c) + ",lastSnap:" + sLastSnap + ",toSlot:" + sRoutesFacings.ToString(c) + ",slotOffGoal:" + sRoutesSlotOffGoal.ToString(c) + ",stopped:" + sRoutesStopped.ToString(c)
+                + ",held:" + sRoutesHeldApplies.ToString(c) + ",snaps:" + sRoutesSnaps.ToString(c) + ",snapsDeferred:" + sSnapsDeferred.ToString(c) + ",snapsDropped:" + sSnapsDropped.ToString(c) + ",lastSnap:" + sLastSnap + ",toSlot:" + sRoutesFacings.ToString(c) + ",slotOffGoal:" + sRoutesSlotOffGoal.ToString(c) + ",stopped:" + sRoutesStopped.ToString(c)
                 + ",overruns:" + sRoutesOverrun.ToString(c) + ",halts:" + sRoutesHalts.ToString(c) + "/" + sRoutesHaltsReceived.ToString(c)
                 + ",haltsTimed:" + sRoutesHaltsTimed.ToString(c) + ",haltsHeld:" + sRoutesHaltsHeld.ToString(c) + ",phaseSplits:" + sRoutesPhaseSplits.ToString(c)
                 + ",haltLate:" + (sRoutesHaltsTimed == 0 ? "-" : sHaltLateMin.ToString(c) + "/" + sHaltLateMax.ToString(c)) + (HaltClockTicks ? "t" : "ms")
                 + ",lead:" + StartLeadMs.ToString(c) + "ms/" + sRoutesLeadWaits.ToString(c) + ",wedged:" + sRoutesWedged.ToString(c) + ",lateReturns:" + sRoutesLateReturns.ToString(c)
+                + ",copyLag:" + SimsOnlineServerHost.CopyLag.Report() + ",walkErr:" + WalkErrorReport() + ",follow:" + FollowReport()
                 + ",stylesApplied:" + sRouteStylesApplied.ToString(c) + ",legStyles:" + sRouteLegStyles.ToString(c) + ",styleRequests:" + sRouteStyleRequests.ToString(c) + ",legArms:" + sRouteLegArms.ToString(c) + ",puppetRoutes:" + sPuppetRoutesConfigured.ToString(c) + ",puppetIgnores:" + sPuppetRouteIgnores.ToString(c)
                 + ",lastError:" + sRoutesLastError
                 // This game's sim clock against the wall clock (two reads give its rate: below real time, walks and clips
@@ -172,6 +174,16 @@ namespace SimsOnline.Presentation
 
             PresentationApi.MarkStreamPositioned(simId.Value);
             Vector3 target = new Vector3(float.Parse(f[3], c), float.Parse(f[4], c), float.Parse(f[5], c));
+            // How far this copy is from the server's Sim at this point of the timeline, for every copy (CopyLag).
+            Vector3 off = sim.Position - target;
+            off.y = 0f;
+            ClientRoute walk = null;
+            int copyState = sim.Parent != null ? 2 : (sClientRoutes.TryGetValue(simId.Value, out walk) && walk.Running ? 1 : 0);
+            CopyLag.Note(simId.Value, off.Length(), copyState);
+            if (copyState == 1)
+            {
+                PlanFollow(walk, off, sim.Position);
+            }
             // The server's Sim's newest place and facing, always (also mid-walk: a target left from before a walk would pull
             // the copy back to where the walk began). SettleMirror applies them once both are at rest.
             MirrorTarget pending;
@@ -180,6 +192,14 @@ namespace SimsOnline.Presentation
                 pending = new MirrorTarget();
                 sMirrorTargets[simId.Value] = pending;
             }
+
+            long sampleMs = DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond;
+            if (copyState == 1 && f.Length > 8)
+            {
+                NoteWalkError(sim.Position, target, float.Parse(f[6], c), float.Parse(f[8], c), pending, sampleMs);
+            }
+
+            pending.SampleMs = sampleMs;
 
             if (!pending.HasPosition || (pending.Position - target).Length() >= PositionStep)
             {
@@ -280,6 +300,309 @@ namespace SimsOnline.Presentation
             // sit-down then turned it 150 degrees once the game ran).
             public DateTime JoinSeenUtc = DateTime.MinValue;
             public long JoinSeenTicks;
+            public long SampleMs; // when the last position sample of this Sim was applied
+        }
+
+        // What kind of error a walking copy has (sync architecture review 2026-11-15, stage 0b): each position sample of a
+        // Sim whose copy is in a walk of its own, split along the server's direction of travel (above 0: the copy is
+        // behind) and across it (the copy is on another line), and the along part as time at the server's speed between
+        // its last two samples. A copy that only started late is behind by a steady time and nothing across.
+        private static long sErrN, sErrBehind, sErrAhead, sErrTimed;
+        private static double sErrAlong, sErrAcross, sErrLagMs, sErrEpoch;
+
+        private static void NoteWalkError(Vector3 copy, Vector3 server, float fx, float fz, MirrorTarget last, long nowMs)
+        {
+            double epoch = Tunables.Get("telemetry.epoch", 0.0);
+            if (epoch != sErrEpoch)
+            {
+                sErrEpoch = epoch;
+                sErrN = 0; sErrBehind = 0; sErrAhead = 0; sErrTimed = 0;
+                sErrAlong = 0.0; sErrAcross = 0.0; sErrLagMs = 0.0;
+            }
+
+            float len = (float)Math.Sqrt(fx * fx + fz * fz);
+            if (len < 0.1f)
+            {
+                return;
+            }
+
+            fx /= len;
+            fz /= len;
+            float dx = server.x - copy.x, dz = server.z - copy.z;
+            float along = dx * fx + dz * fz;
+            float across = Math.Abs(dx * fz - dz * fx);
+            if (float.IsNaN(along) || float.IsNaN(across) || Math.Abs(along) > 100f || across > 100f)
+            {
+                return; // one of the two is at the hidden spot: not a walking error
+            }
+
+            sErrN++;
+            sErrAlong += along;
+            sErrAcross += across;
+            if (along > 0.3f) sErrBehind++;
+            else if (along < -0.3f) sErrAhead++;
+            if (last != null && last.HasPosition && last.SampleMs > 0)
+            {
+                long dt = nowMs - last.SampleMs;
+                float mx = server.x - last.Position.x, mz = server.z - last.Position.z;
+                float moved = (float)Math.Sqrt(mx * mx + mz * mz);
+                if (dt >= 50 && dt <= 2000 && moved > 0.1f)
+                {
+                    double speed = moved / (dt / 1000.0);
+                    if (speed > 0.5 && speed < 8.0)
+                    {
+                        sErrLagMs += along / speed * 1000.0;
+                        sErrTimed++;
+                    }
+                }
+            }
+        }
+
+        private static string WalkErrorReport()
+        {
+            CultureInfo c = CultureInfo.InvariantCulture;
+            if (sErrN == 0)
+            {
+                return "none";
+            }
+
+            return sErrN.ToString(c) + " samples / along mean " + (sErrAlong / sErrN).ToString("F2", c) + " m / across mean " + (sErrAcross / sErrN).ToString("F2", c)
+                + " m / behind " + (100.0 * sErrBehind / sErrN).ToString("F0", c) + "% ahead " + (100.0 * sErrAhead / sErrN).ToString("F0", c)
+                + "% / as time mean " + (sErrTimed == 0 ? "-" : (sErrLagMs / sErrTimed).ToString("F0", c)) + " ms over " + sErrTimed.ToString(c);
+        }
+
+        // The corrected follower (sync architecture review 2026-11-15, spike B). Opt-in via walk.follow (default 0 = off).
+        private static bool FollowOn { get { return Tunables.Get("walk.follow", 0.0) >= 1.0; } }
+        private static float FollowGain { get { return Tunables.Get("walk.follow-gain", 0.6f); } }
+        private static float FollowSpanMs { get { return Tunables.Get("walk.follow-span-ms", 250f); } }
+        private static float FollowShare { get { return Tunables.Get("walk.follow-share", 0.125f); } }
+        private static float FollowMaxStep { get { return Tunables.Get("walk.follow-max-step", 0.04f); } }
+        private static float FollowMaxError { get { return Tunables.Get("walk.follow-max-gap", 3f); } }
+        private static float FollowDeadband { get { return Tunables.Get("walk.follow-deadband", 0.05f); } }
+        private static float FollowEndZone { get { return Tunables.Get("walk.follow-end-zone", 0f); } }
+        private static long sFollowPaybacks;
+        private static bool sFollowTask;
+        private static int sFollowGeneration;
+        private static long sFollowPlans, sFollowSteps, sFollowSkips, sFollowErrors;
+        private static double sFollowMetres, sFollowEpoch;
+        private static readonly List<ulong> sFollowIds = new List<ulong>();
+
+        // off: the copy's place minus the server's Sim's, level, at a position sample of a copy in a walk of its own.
+        private static void PlanFollow(ClientRoute walk, Vector3 off, Vector3 here)
+        {
+            if (walk == null)
+            {
+                return;
+            }
+
+            if (!FollowOn)
+            {
+                walk.FollowUntilMs = 0L;
+                return;
+            }
+
+            float zone = FollowEndZone;
+            bool paying = false;
+            if (zone > 0f && !walk.TurnOnly)
+            {
+                Vector3 toGoal = walk.Goal - here;
+                toGoal.y = 0f;
+                float left = toGoal.Length();
+                if (!float.IsNaN(left) && left <= zone)
+                {
+                    float debt = walk.FollowLegBack - walk.FollowLegForward;
+                    if (left < 0.05f || Math.Abs(debt) < 0.01f)
+                    {
+                        walk.FollowUntilMs = 0L;
+                        return;
+                    }
+
+                    off = toGoal * (0f - debt / left / FollowGain);
+                    paying = true;
+                    sFollowPaybacks++;
+                }
+            }
+
+            float distance = off.Length();
+            if (float.IsNaN(distance) || (!paying && distance < FollowDeadband) || distance > FollowMaxError)
+            {
+                walk.FollowUntilMs = 0L;
+                return;
+            }
+
+            double epoch = Tunables.Get("telemetry.epoch", 0.0);
+            if (epoch != sFollowEpoch)
+            {
+                sFollowEpoch = epoch;
+                sFollowPlans = 0; sFollowSteps = 0; sFollowSkips = 0; sFollowPaybacks = 0; sFollowMetres = 0.0;
+            }
+
+            long now = DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond;
+            if (walk.FollowUntilMs == 0L)
+            {
+                walk.FollowHasPlace = false;
+            }
+
+            walk.FollowLeft = off * (0f - FollowGain);
+            walk.FollowFromMs = now;
+            walk.FollowUntilMs = now + (long)FollowSpanMs;
+            sFollowPlans++;
+            if (!sFollowTask)
+            {
+                sFollowTask = true;
+                try
+                {
+                    if (!Simulator.AddObject(new OneShotFunctionTask(new Function(FollowLoop))).IsValid)
+                    {
+                        sFollowTask = false;
+                    }
+                }
+                catch (Exception)
+                {
+                    sFollowTask = false;
+                    sFollowErrors++;
+                }
+            }
+        }
+
+        private static void FollowLoop()
+        {
+            int generation = sFollowGeneration;
+            int idle = 0;
+            try
+            {
+                while (generation == sFollowGeneration && idle < 600)
+                {
+                    Simulator.Sleep(0);
+                    if (!FollowOn || sClientRoutes.Count == 0)
+                    {
+                        idle++;
+                        continue;
+                    }
+
+                    sFollowIds.Clear();
+                    foreach (KeyValuePair<ulong, ClientRoute> pair in sClientRoutes)
+                    {
+                        if (pair.Value.Running && pair.Value.FollowUntilMs != 0L)
+                        {
+                            sFollowIds.Add(pair.Key);
+                        }
+                    }
+
+                    if (sFollowIds.Count == 0)
+                    {
+                        idle++;
+                        continue;
+                    }
+
+                    idle = 0;
+                    long now = DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond;
+                    for (int i = 0; i < sFollowIds.Count; i++)
+                    {
+                        FollowStep(sFollowIds[i], now);
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                sFollowErrors++;
+            }
+            finally
+            {
+                sFollowTask = false;
+            }
+        }
+
+        private static void FollowStep(ulong id, long now)
+        {
+            ClientRoute entry;
+            if (!sClientRoutes.TryGetValue(id, out entry) || !entry.Running)
+            {
+                return;
+            }
+
+            try
+            {
+                Sim sim = new ObjectGuid(id).ObjectFromId<Sim>();
+                if (sim == null || sim.HasBeenDestroyed || !sim.IsRouting || sim.Parent != null || entry.TurnOnly || entry.StopRequested
+                    || entry.HaltPending || FollowedLeg(sim) is PortalAction)
+                {
+                    entry.FollowUntilMs = 0L;
+                    sFollowSkips++;
+                    return;
+                }
+
+                Vector3 here = sim.Position;
+                if (!entry.FollowHasPlace)
+                {
+                    entry.FollowHasPlace = true;
+                    entry.FollowPlace = here;
+                    entry.FollowFromMs = now;
+                    return;
+                }
+
+                Vector3 strode = here - entry.FollowPlace;
+                strode.y = 0f;
+                float stride = strode.Length();
+                long dt = now - entry.FollowFromMs;
+                long span = entry.FollowUntilMs - entry.FollowFromMs;
+                entry.FollowFromMs = now;
+                entry.FollowPlace = here;
+                Vector3 want = entry.FollowLeft;
+                want.y = 0f;
+                float wantLength = want.Length();
+                bool over = now >= entry.FollowUntilMs;
+                if (wantLength < 0.002f)
+                {
+                    entry.FollowUntilMs = 0L;
+                    return;
+                }
+
+                float step = wantLength * (span <= 0L || dt >= span ? 1f : (float)dt / (float)span);
+                float cap = Math.Min(FollowMaxStep, stride * FollowShare);
+                if (step > cap)
+                {
+                    step = cap;
+                }
+
+                if (dt > 0L && step >= 0.001f)
+                {
+                    Vector3 move = want * (step / wantLength);
+                    Vector3 put = new Vector3(here.x + move.x, here.y, here.z + move.z);
+                    sim.SetPosition(put);
+                    entry.FollowPlace = put;
+                    entry.FollowLeft = want - move;
+                    if (stride > 0.0001f)
+                    {
+                        float along = (move.x * strode.x + move.z * strode.z) / stride;
+                        float across = (move.x * strode.z - move.z * strode.x) / stride;
+                        if (along >= 0f) { entry.FollowForward += along; entry.FollowLegForward += along; }
+                        else { entry.FollowBack -= along; entry.FollowLegBack -= along; }
+                        entry.FollowAcross += Math.Abs(across);
+                        entry.FollowParts++;
+                    }
+
+                    sFollowSteps++;
+                    sFollowMetres += step;
+                }
+
+                if (over)
+                {
+                    entry.FollowUntilMs = 0L;
+                }
+            }
+            catch (Exception)
+            {
+                entry.FollowUntilMs = 0L;
+                sFollowErrors++;
+            }
+        }
+
+        private static string FollowReport()
+        {
+            CultureInfo c = CultureInfo.InvariantCulture;
+            return (FollowOn ? "on" : "off") + " plans " + sFollowPlans.ToString(c) + " steps " + sFollowSteps.ToString(c) + " moved " + sFollowMetres.ToString("F2", c)
+                + " m skipped " + sFollowSkips.ToString(c) + " paybacks " + sFollowPaybacks.ToString(c) + " errors " + sFollowErrors.ToString(c) + (sFollowTask ? " task" : "");
         }
 
         private static readonly Dictionary<ulong, MirrorTarget> sMirrorTargets = new Dictionary<ulong, MirrorTarget>();
@@ -292,6 +615,7 @@ namespace SimsOnline.Presentation
         // How long after the stream last moved one of the copy's interaction machines the mirror leaves the copy to its clip.
         private static TimeSpan MirrorAnimHold { get { return Tunables.Seconds("mirror.anim-hold", 3.0); } }
         private static long sMirrorAnimHolds;
+        private static long sMirrorPlaced; // server placements the mirror's target followed (ServerPlaced)
         // A standing copy this far from the server's Sim walks there; nearer it is placed, farther it jumps.
         private static float MirrorWalkMin { get { return Tunables.Get("mirror.walk-min", 0.5f); } }
         private static float MirrorWalkMax { get { return Tunables.Get("mirror.walk-max", 6f); } }
@@ -301,6 +625,66 @@ namespace SimsOnline.Presentation
         private static bool MirrorTurns { get { return Tunables.Get("mirror.turn", 1.0) > 0.5; } }
         // Simulator ticks (about 30 a second at normal speed) the game must run after a join reset before the join settle.
         private static long MirrorJoinTicks { get { return (long)Tunables.Get("mirror.join-ticks", 150f); } }
+
+        // The shell applied a server placement to this copy (PresentationModules.Placed, after an Ob line: SetPosition,
+        // SetForward, SetTransform, SetRotation). Updates the mirror target to match where the copy stands.
+        internal static bool ServerPlaced(string[] f)
+        {
+            if (f == null || f.Length < 4)
+            {
+                return false;
+            }
+
+            int colon = f[3].IndexOf(':');
+            string call = colon < 0 ? f[3] : f[3].Substring(0, colon);
+            bool places = call == "SetPosition" || call == "SetTransform";
+            bool faces = call == "SetForward" || call == "SetTransform" || call == "SetRotation";
+            if (!places && !faces)
+            {
+                return false;
+            }
+
+            ulong serverId;
+            if (!ulong.TryParse(f[2], NumberStyles.None, CultureInfo.InvariantCulture, out serverId))
+            {
+                return false;
+            }
+
+            ObjectGuid simId = PresentationApi.ReplayObject(serverId);
+            MirrorTarget pending;
+            if (!simId.IsValid || Vehicles.HoldsPosition(simId.Value) || !sMirrorTargets.TryGetValue(simId.Value, out pending) || IsWalking(simId.Value))
+            {
+                return false;
+            }
+
+            Sim sim = simId.ObjectFromId<Sim>();
+            if (sim == null)
+            {
+                return false;
+            }
+
+            DateTime now = DateTime.UtcNow;
+            Vector3 position = sim.Position;
+            Vector3 forward = sim.ForwardVector;
+            if (places)
+            {
+                pending.Position = position;
+                pending.HasPosition = true;
+            }
+
+            if (faces && forward.x * forward.x + forward.z * forward.z > 0.01f)
+            {
+                pending.Forward = new Vector3(forward.x, 0f, forward.z);
+                pending.HasForward = true;
+            }
+
+            pending.ServerMovedUtc = now;
+            pending.CopyPosition = position;
+            pending.CopyForward = forward;
+            pending.CopyMovedUtc = now;
+            sMirrorPlaced++;
+            return true;
+        }
 
 
         // Every replay batch.
@@ -603,6 +987,8 @@ namespace SimsOnline.Presentation
             public bool ServerEnded;
             public DateTime ServerEndedUtc;
             public Vector3 ServerEnd;
+            public string ServerEndBy = "";  // Rx's by: stop, inactive, arrived
+            public long SnapDueMs;           // the walk-end snap waits until then (walk.stop-snap-defer-ms); 0 = none waits
             public ulong DestObject;   // the server's route destination object and slot (Rs), 0 when it routed to a point
             public uint DestSlot;
             // The server's walk: when it started and ended (ms, the machine clock the dev stack shares; 0 = unknown).
@@ -633,6 +1019,22 @@ namespace SimsOnline.Presentation
             // The server's walk style leg by leg (its Rs for each leg, in order), and the copy's leg now (-1: none yet).
             public readonly List<uint> LegStyles = new List<uint>();
             public int CopyLeg = -1;
+            // The follower's correction (walk.follow): what is left of the move towards the server's Sim planned at
+            // the last position sample, until when it is spread, when the last part was given, and where the copy was
+            // put then (the game's own stride since is measured from it).
+            public Vector3 FollowLeft;
+            public long FollowUntilMs;
+            public long FollowFromMs;
+            public bool FollowHasPlace;
+            public Vector3 FollowPlace;
+            // What the follower gave this walk, along the copy's own stride (forward, back) and across it: metres.
+            public float FollowForward;
+            public float FollowBack;
+            public float FollowAcross;
+            public int FollowParts;
+            // The same along the copy's stride since its leg now began (a portal leg puts the copy on its slots anew).
+            public float FollowLegForward;
+            public float FollowLegBack;
             public readonly Dictionary<string, bool> SourceRoutes = new Dictionary<string, bool>();
         }
 
@@ -685,6 +1087,10 @@ namespace SimsOnline.Presentation
         private static readonly TimeSpan ClientRouteMaxHold = TimeSpan.FromSeconds(20);
         // STOPGAP(boundary-recording): walk-end-snap a copy that ended its walk elsewhere jumps to the server's end; it should end there itself.
         private static float ClientRouteSnapDistance { get { return Tunables.Get("walk.end-snap", 0.1f); } }
+        // The snap after a server walk that was stopped waits this long (ms; 0 = at once, as before).
+        private static double StopSnapDeferMs { get { return Tunables.Get("walk.stop-snap-defer-ms", 0.0); } }
+        private const float StopSnapDeferMost = 1.5f;
+        private static long sSnapsDeferred, sSnapsDropped;
         private static long sRoutesStopped;
 
         private static long sRoutesReceived;
@@ -828,6 +1234,12 @@ namespace SimsOnline.Presentation
 
             entry.LegStyles.Clear();
             entry.CopyLeg = -1;
+            entry.FollowForward = 0f;
+            entry.FollowBack = 0f;
+            entry.FollowAcross = 0f;
+            entry.FollowParts = 0;
+            entry.FollowLegForward = 0f;
+            entry.FollowLegBack = 0f;
             entry.StyledLeg = null;
             if (entry.HasSpec)
             {
@@ -838,6 +1250,13 @@ namespace SimsOnline.Presentation
             entry.DestSlot = destSlot;
             entry.DestObject = destObject;
             entry.Pending = true;
+            if (entry.SnapDueMs != 0L)
+            {
+                entry.SnapDueMs = 0L;
+                sSnapsDropped++;
+                PresentationApi.Note(simId.Value, "walk end snap dropped: the server's Sim walks on, the copy starts this walk from where it stopped");
+            }
+
             entry.ServerEnded = false;
             entry.HaltPending = false;
             entry.HaltOffset = -1L;
@@ -913,6 +1332,14 @@ namespace SimsOnline.Presentation
             entry.ServerEnded = true;
             entry.ServerEndedUtc = now;
             entry.ServerEnd = goal;
+            entry.ServerEndBy = "";
+            entry.SnapDueMs = 0L; // the copy's own walk to the server's place takes over
+            entry.FollowForward = 0f;
+            entry.FollowBack = 0f;
+            entry.FollowAcross = 0f;
+            entry.FollowParts = 0;
+            entry.FollowLegForward = 0f;
+            entry.FollowLegBack = 0f;
             entry.ServerStartMs = nowMs;
             entry.ServerEndMs = nowMs + (long)(1000.0 * (MirrorWalkSlack + distance / Math.Max(0.1, MirrorWalkSpeed)));
             entry.ReceivedMs = 0L; // the copy's own correction: no lead, and no server stop to replay
@@ -1132,7 +1559,11 @@ namespace SimsOnline.Presentation
                         }
 
                         PresentationApi.Note(id, "walk end " + (done ? "arrived" : "failed " + sim.ExitReason.ToString().Replace(", ", "+")) + (entry.StopRequested ? " (stopped)" : "")
-                            + " at " + sim.Position.x.ToString("F2", CultureInfo.InvariantCulture) + "," + sim.Position.z.ToString("F2", CultureInfo.InvariantCulture));
+                            + " at " + sim.Position.x.ToString("F2", CultureInfo.InvariantCulture) + "," + sim.Position.z.ToString("F2", CultureInfo.InvariantCulture)
+                            + (entry.FollowParts == 0 ? "" : "; the follower gave " + entry.FollowForward.ToString("F2", CultureInfo.InvariantCulture) + " m forward, "
+                                + entry.FollowBack.ToString("F2", CultureInfo.InvariantCulture) + " m back, " + entry.FollowAcross.ToString("F2", CultureInfo.InvariantCulture)
+                                + " m across in " + entry.FollowParts.ToString(CultureInfo.InvariantCulture) + " parts, in its last leg "
+                                + entry.FollowLegForward.ToString("F2", CultureInfo.InvariantCulture) + " forward and " + entry.FollowLegBack.ToString("F2", CultureInfo.InvariantCulture) + " back"));
                         entry.Current = null;
                         if (done)
                         {
@@ -1349,6 +1780,8 @@ namespace SimsOnline.Presentation
                 if (newLeg)
                 {
                     entry.CopyLeg++;
+                    entry.FollowLegForward = 0f;
+                    entry.FollowLegBack = 0f;
                 }
 
                 entry.SpecApplied = true;
@@ -1555,6 +1988,7 @@ namespace SimsOnline.Presentation
             // wall clock on a dev host): a late "arrived" is the server's end check, a late arrival is the stream
             // (two-chairs 2026-10-21: the end reached both clients 2.7 s after the server's Sim sat, the sit-down cut short).
             string by = f.Length > 10 ? f[10] : "-";
+            entry.ServerEndBy = by;
             // The server's Stop call on this walk, if any (Rx's stopMode|accepted|stopMs): the mode, whether the route took
             // it, and how long before the end it came. A stopped Sim walks on to rest, and the end line is sent there.
             string stop = "";
@@ -1622,6 +2056,18 @@ namespace SimsOnline.Presentation
             foreach (KeyValuePair<ulong, ClientRoute> pair in sClientRoutes)
             {
                 ClientRoute entry = pair.Value;
+                if (entry.SnapDueMs != 0L && now.Ticks / TimeSpan.TicksPerMillisecond >= entry.SnapDueMs)
+                {
+                    if (entry.Running || entry.Pending)
+                    {
+                        entry.SnapDueMs = 0L; // a walk began: its start dealt with the snap
+                    }
+                    else
+                    {
+                        ReleaseRouteHold(pair.Key, entry, true);
+                    }
+                }
+
                 if (entry.Running && !entry.StopRequested)
                 {
                     ApplyRouteStyle(pair.Key, entry);
@@ -1914,6 +2360,12 @@ namespace SimsOnline.Presentation
 
         private static void ReleaseRouteHold(ulong id, ClientRoute entry)
         {
+            ReleaseRouteHold(id, entry, false);
+        }
+
+        // due: the wait of a stopped walk's snap is over (ExpireClientRoutes).
+        private static void ReleaseRouteHold(ulong id, ClientRoute entry, bool due)
+        {
             // Where the server's Sim stopped (Rte): the lines held behind the walk play next and do from there what the
             // server's Sim did (sit down, lie down). A place the server sent after its walk ended put the copy in the seat
             // before its sit-down played it there again (and the facing settle passed the copy's own mid-walk place in as
@@ -1931,6 +2383,21 @@ namespace SimsOnline.Presentation
                 float off = sim != null ? (sim.Position - target).Length() : 0f;
                 if (sim != null && off > ClientRouteSnapDistance)
                 {
+                    double defer = StopSnapDeferMs;
+                    if (!due && defer > 0.0 && entry.ServerEndBy == "stop" && off <= StopSnapDeferMost)
+                    {
+                        if (entry.SnapDueMs == 0L)
+                        {
+                            entry.SnapDueMs = DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond + (long)defer;
+                            sSnapsDeferred++;
+                            PresentationApi.Note(id, "walk end snap waits " + ((long)defer).ToString(CultureInfo.InvariantCulture) + " ms: the server's walk was stopped "
+                                + off.ToString("F2", CultureInfo.InvariantCulture) + " m from the copy; a walk that follows starts from here");
+                        }
+
+                        return;
+                    }
+
+                    entry.SnapDueMs = 0L;
                     string snapContext = PresentationApi.LocalContext;
                     PresentationApi.LocalContext = "walk end snap";
                     sim.SetPosition(target);

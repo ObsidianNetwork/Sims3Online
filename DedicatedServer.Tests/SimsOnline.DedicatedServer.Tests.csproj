@@ -50,6 +50,9 @@
     <Compile Include="..\SimsOnlineServerHostMod\SacsRequestTrace.cs" Link="Linked\SacsRequestTrace.cs" />
     <!-- B1: the RepairOwnMachines caller labels the motion watch attributes a client restart to. -->
     <Compile Include="..\SimsOnlineServerHostMod\RepairLabel.cs" Link="Linked\RepairLabel.cs" />
+    <!-- Sync Rework S1: stream wire cleanup and delayed batch playout queue. -->
+    <Compile Include="..\SimsOnlineServerHostMod\WireNumbers.cs" Link="Linked\WireNumbers.cs" />
+    <Compile Include="..\SimsOnlineServerHostMod\LineDelayQueue.cs" Link="Linked\LineDelayQueue.cs" />
     <!-- B2+(a): the replay's first request for a state a repair entered, dropped before the SACS pump took it. -->
     <Compile Include="..\SimsOnlineServerHostMod\RepairEntryGate.cs" Link="Linked\RepairEntryGate.cs" />
     <!-- B2: the repair's entry for a puppet's dead standing idle, and the stream's latest state per driver. -->

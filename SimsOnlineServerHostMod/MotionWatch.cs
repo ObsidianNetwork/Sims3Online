@@ -32,6 +32,90 @@ namespace SimsOnlineServerHost
         internal static long Dropped;
         internal static long Updates;
 
+        // The last stream lines this game applied, kept only while a watch runs. When a watched object's position turns
+        // invalid (NaN), they and the object's slot parents name what the game had just done: in
+        // two-lots-travel-stability (runs 18 and 19, 2026-11-15) Pablo, seated in the moving taxi, read NaN for about
+        // 250 ms on both clients at the same place of the ride, with nothing invalid in the lines sent.
+        private const int RecentCapacity = 48;
+        private static readonly string[] sRecent = new string[RecentCapacity];
+        private static int sRecentNext;
+        private static readonly Dictionary<ulong, int> sInvalidSince = new Dictionary<ulong, int>();
+
+        internal static void NoteApplied(string line)
+        {
+            if (line == null || !Active)
+            {
+                return;
+            }
+
+            long ms = DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond;
+            sRecent[sRecentNext % RecentCapacity] = (ms % 100000L).ToString("00000", CultureInfo.InvariantCulture) + " "
+                + (line.Length > 64 ? line.Substring(0, 64) : line);
+            sRecentNext++;
+        }
+
+        private static bool Invalid(Vector3 v)
+        {
+            return float.IsNaN(v.x) || float.IsNaN(v.y) || float.IsNaN(v.z) || float.IsInfinity(v.x) || float.IsInfinity(v.y) || float.IsInfinity(v.z);
+        }
+
+        // The applied lines from index first on (oldest first), a few per event so each stays readable.
+        private static void NoteRecent(ulong obj, string label, int first)
+        {
+            first = Math.Max(first, Math.Max(0, sRecentNext - RecentCapacity));
+            System.Text.StringBuilder text = new System.Text.StringBuilder();
+            int inEvent = 0;
+            for (int i = first; i < sRecentNext; i++)
+            {
+                text.Append(inEvent == 0 ? label + ": " : " ; ").Append(sRecent[i % RecentCapacity]);
+                inEvent++;
+                if (inEvent == 6 || i == sRecentNext - 1)
+                {
+                    Note(obj, text.ToString());
+                    text.Length = 0;
+                    inEvent = 0;
+                }
+            }
+        }
+
+        // A watched object's position turned invalid or valid again: its slot parents (each with its own position) and
+        // the lines applied just before, or while it lasted.
+        private static void NoteValidity(ObjectGuid id, ulong obj, bool invalid)
+        {
+            CultureInfo c = CultureInfo.InvariantCulture;
+            if (!invalid)
+            {
+                int since = sInvalidSince[obj];
+                sInvalidSince.Remove(obj);
+                Note(obj, "position valid again after " + (sRecentNext - since).ToString(c) + " applied line(s)");
+                NoteRecent(obj, "applied while invalid", since);
+                return;
+            }
+
+            sInvalidSince[obj] = sRecentNext;
+            string chain = "";
+            ObjectGuid at = id;
+            for (int depth = 0; depth < 3; depth++)
+            {
+                ObjectGuid parent = Slots.GetParentId(at);
+                if (parent == ObjectGuid.InvalidObjectGuid || !Objects.IsValid(parent))
+                {
+                    break;
+                }
+
+                bool bone = false;
+                Slot slot = Slots.GetParentSlot(at, ref bone);
+                Vector3 pp = Objects.GetPosition(parent);
+                chain += " <- slot " + ((uint)slot).ToString("x8", c) + (bone ? " (bone)" : "") + " of " + parent.Value.ToString(c)
+                    + (Invalid(pp) ? " at INVALID" : " at " + pp.x.ToString("F2", c) + "," + pp.y.ToString("F2", c) + "," + pp.z.ToString("F2", c))
+                    + (Invalid(Objects.GetForward(parent)) ? " facing INVALID" : "");
+                at = parent;
+            }
+
+            Note(obj, "position INVALID (NaN)" + (chain.Length == 0 ? "; no slot parent" : ";" + chain));
+            NoteRecent(obj, "applied before", sRecentNext - 36);
+        }
+
         internal static bool Active
         {
             get { return DateTime.UtcNow < sUntil; }
@@ -44,6 +128,8 @@ namespace SimsOnlineServerHost
             Updates = 0L;
             sObjects = objects ?? new ulong[0];
             sWatched.Clear();
+            sInvalidSince.Clear();
+            sRecentNext = 0;
             for (int i = 0; i < sObjects.Length; i++)
             {
                 sWatched[sObjects[i]] = true;
@@ -88,6 +174,21 @@ namespace SimsOnlineServerHost
 
             sSamples.Add((DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond).ToString(CultureInfo.InvariantCulture) + "|"
                 + obj.ToString(CultureInfo.InvariantCulture) + "|E|" + (what ?? "-").Replace('|', '/'));
+        }
+
+        // An event that is about no watched object itself but may explain one (the transform guard on the car a watched
+        // Sim rides in): noted on every watched object.
+        internal static void NoteEvery(string what)
+        {
+            if (!Active || sObjects == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < sObjects.Length; i++)
+            {
+                Note(sObjects[i], what);
+            }
         }
 
         // A generated recorder's call (kind|object|Method:codes|args): noted when it is about a watched object.
@@ -178,6 +279,12 @@ namespace SimsOnlineServerHost
 
                     Vector3 p = Objects.GetPosition(id);
                     Vector3 f = Objects.GetForward(id);
+                    bool invalid = Invalid(p) || Invalid(f);
+                    if (invalid != sInvalidSince.ContainsKey(sObjects[i]))
+                    {
+                        NoteValidity(id, sObjects[i], invalid);
+                    }
+
                     Sim sim = id.ObjectFromId<Sim>();
                     bool walking = sim != null && sim.IsRouting;
                     string state = "-";
