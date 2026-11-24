@@ -27,25 +27,43 @@ namespace SimsOnline.Handlers
     // (float) with the exact type the shell switch casts to (a mismatch is a runtime InvalidCast).
     public class HandlerSet
     {
+        private delegate string CommandHandler(string[] parts, Converter<object[], object> svc);
+
+        // Explicit table instead of `switch (name)` so .NET 2 csc never emits a
+        // <PrivateImplementationDetails> Dictionary<string, int> static field inside TS3 Mono.
+        private static readonly Dictionary<string, CommandHandler> sHandlers = BuildHandlers();
+        private static readonly string[] sCommandNames = CopyCommandNames();
+
+        private static Dictionary<string, CommandHandler> BuildHandlers()
+        {
+            Dictionary<string, CommandHandler> map = new Dictionary<string, CommandHandler>();
+            map.Add("PROBE_SIM_STATUS", ProbeSimStatus);
+            map.Add("APPLY_POSITION", ApplyPosition);
+            map.Add("APPLY_POSITIONS", ApplyPositions);
+            map.Add("APPLY_MOTIVE", ApplyMotive);
+            map.Add("PROBE_SIM_MOTIVE", ProbeSimMotive);
+            map.Add("APPLY_CASH", ApplyCash);
+            map.Add("PROBE_HOUSEHOLD_CASH", ProbeHouseholdCash);
+            map.Add("APPLY_SKILL", ApplySkill);
+            map.Add("PROBE_SIM_SKILL", ProbeSimSkill);
+            map.Add("APPLY_AUTONOMY", ApplyAutonomy);
+            map.Add("PROBE_SIM_AUTONOMY", ProbeSimAutonomy);
+            map.Add("PROBE_SIM_INTERACTION_QUEUE", ProbeSimInteractionQueue);
+            return map;
+        }
+
+        private static string[] CopyCommandNames()
+        {
+            string[] names = new string[sHandlers.Count];
+            sHandlers.Keys.CopyTo(names, 0);
+            return names;
+        }
+
         // Phase B-2: the full APPLY_* + PROBE_* state family. (DIAG forensic tools + the engine-
         // callback-binding interaction handlers stay shell-permanent.)
         public static string[] Names()
         {
-            return new string[]
-            {
-                "PROBE_SIM_STATUS",
-                "APPLY_POSITION",
-                "APPLY_POSITIONS",
-                "APPLY_MOTIVE",
-                "PROBE_SIM_MOTIVE",
-                "APPLY_CASH",
-                "PROBE_HOUSEHOLD_CASH",
-                "APPLY_SKILL",
-                "PROBE_SIM_SKILL",
-                "APPLY_AUTONOMY",
-                "PROBE_SIM_AUTONOMY",
-                "PROBE_SIM_INTERACTION_QUEUE",
-            };
+            return (string[])sCommandNames.Clone();
         }
 
         // Returns "ok" / "err:<reason>" for the shell's dispatch breadcrumb; the actual wire reply is
@@ -54,22 +72,12 @@ namespace SimsOnline.Handlers
         public static string Dispatch(string name, string[] parts, object ctx)
         {
             Converter<object[], object> svc = (Converter<object[], object>)ctx;
-            switch (name)
+            CommandHandler handler;
+            if (name != null && sHandlers.TryGetValue(name, out handler))
             {
-                case "PROBE_SIM_STATUS": return ProbeSimStatus(parts, svc);
-                case "APPLY_POSITION": return ApplyPosition(parts, svc);
-                case "APPLY_POSITIONS": return ApplyPositions(parts, svc);
-                case "APPLY_MOTIVE": return ApplyMotive(parts, svc);
-                case "PROBE_SIM_MOTIVE": return ProbeSimMotive(parts, svc);
-                case "APPLY_CASH": return ApplyCash(parts, svc);
-                case "PROBE_HOUSEHOLD_CASH": return ProbeHouseholdCash(parts, svc);
-                case "APPLY_SKILL": return ApplySkill(parts, svc);
-                case "PROBE_SIM_SKILL": return ProbeSimSkill(parts, svc);
-                case "APPLY_AUTONOMY": return ApplyAutonomy(parts, svc);
-                case "PROBE_SIM_AUTONOMY": return ProbeSimAutonomy(parts, svc);
-                case "PROBE_SIM_INTERACTION_QUEUE": return ProbeSimInteractionQueue(parts, svc);
-                default: return "err:unknown handler command " + name;
+                return handler(parts, svc);
             }
+            return "err:unknown handler command " + name;
         }
 
         // -------------------------------------------------------------------------------------

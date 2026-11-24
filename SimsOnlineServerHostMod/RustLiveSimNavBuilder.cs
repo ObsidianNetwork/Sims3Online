@@ -180,7 +180,9 @@ namespace SimsOnlineServerHost
             }
             if (vertices > 65535) throw new FormatException("vertex capacity");
             RustPrivateNavigation.Writer w = new RustPrivateNavigation.Writer(RustPrivateNavigation.MaxSimNav);
-            w.Bytes(new byte[] { 83, 73, 77, 78, 65, 86, 48, 49 }); w.U32(1);
+            // Encode "SIMNAV01" from string bytes rather than `new byte[] { ... }`: .NET 2 csc emits
+            // 8-byte array initializers as an int64 HasFieldRVA field that overruns TS3 Mono static_data by 4 bytes.
+            w.Bytes(System.Text.Encoding.UTF8.GetBytes("SIMNAV01")); w.U32(1);
             w.U32(4u | (multiLot ? 2u : 0u) | (mTemplates.Count > 0 ? 1u : 0u));
             w.U64(mLot); w.U64(0); w.U32((uint)rooms.Count); w.U32((uint)Cells.Count); w.U32((uint)mPortals.Count);
             w.U32((uint)mTemplates.Count); w.U32((uint)vertices); w.U32(0); w.U64(0);

@@ -8034,20 +8034,28 @@ namespace SimsOnlineServerHost
                 return false;
             }
 
+            string opcode = f[3];
+            if (opcode == null || opcode.Length != 1)
+            {
+                return false;
+            }
+
+            // The legacy compiler lowers large string switches to a generic dictionary, which faulted here in Mono.
+            char operation = opcode[0];
             try
             {
                 uint local;
-                switch (f[3])
+                switch (operation)
                 {
-                    case "o":
+                    case 'o':
                         local = sClientAudio.StartObjectSound(obj, BridgeCodec.DecodeText(f[5]), f[6] == "1");
                         KeepSound(uint.Parse(f[4], c), local);
                         break;
-                    case "w":
+                    case 'w':
                         local = sClientAudio.StartObjectSoundWithFlags(obj, BridgeCodec.DecodeText(f[5]), uint.Parse(f[6], c));
                         KeepSound(uint.Parse(f[4], c), local);
                         break;
-                    case "x":
+                    case 'x':
                         {
                             uint server = uint.Parse(f[4], c);
                             if (sClientSoundHandles.TryGetValue(server, out local))
@@ -8058,21 +8066,21 @@ namespace SimsOnlineServerHost
 
                             break;
                         }
-                    case "z":
+                    case 'z':
                         sClientAudio.StopAllObjectSound(obj);
                         break;
-                    case "u":
+                    case 'u':
                         sClientAudio.MuteAllObjectSounds(obj, f[4] == "1");
                         break;
-                    case "s":
+                    case 's':
                         if (sClientSoundHandles.TryGetValue(uint.Parse(f[4], c), out local))
                         {
                             sClientAudio.SetSoundProperty(local, uint.Parse(f[5], c), float.Parse(f[6], c));
                         }
 
                         break;
-                    case "p":
-                    case "g":
+                    case 'p':
+                    case 'g':
                         {
                             ObjectGuid target = ReplayObject(ulong.Parse(f[4], c));
                             if (!target.IsValid)
@@ -8080,7 +8088,7 @@ namespace SimsOnlineServerHost
                                 return false;
                             }
 
-                            if (f[3] == "p")
+                            if (operation == 'p')
                             {
                                 sClientAudio.PlayObjectPutSound(obj, target);
                             }
@@ -8091,17 +8099,17 @@ namespace SimsOnlineServerHost
 
                             break;
                         }
-                    case "a":
-                    case "A":
+                    case 'a':
+                    case 'A':
                         {
-                            SoundSpec[] children = ReplaySoundSpecs(f[f[3] == "a" ? 6 : 5]);
+                            SoundSpec[] children = ReplaySoundSpecs(f[operation == 'a' ? 6 : 5]);
                             if (children == null)
                             {
                                 return false;
                             }
 
                             uint server = uint.Parse(f[4], c);
-                            if (f[3] == "a")
+                            if (operation == 'a')
                             {
                                 local = sClientAudio.StartSoundArray(BridgeCodec.DecodeText(f[5]), children);
                                 KeepSound(server, local);
@@ -8117,7 +8125,7 @@ namespace SimsOnlineServerHost
 
                             break;
                         }
-                    case "y":
+                    case 'y':
                         {
                             uint server = uint.Parse(f[4], c);
                             if (sClientSoundHandles.TryGetValue(server, out local))
@@ -8128,17 +8136,17 @@ namespace SimsOnlineServerHost
 
                             break;
                         }
-                    case "q":
+                    case 'q':
                         if (sClientSoundHandles.TryGetValue(uint.Parse(f[4], c), out local))
                         {
                             sClientAudio.SetSoundArrayGain(local, float.Parse(f[5], c));
                         }
 
                         break;
-                    case "P":
+                    case 'P':
                         sClientAudio.PlayObjectPutOnFloorSound(obj);
                         break;
-                    case "G":
+                    case 'G':
                         sClientAudio.PlayObjectGetFromFloorSound(obj);
                         break;
                     default:
@@ -8293,33 +8301,39 @@ namespace SimsOnlineServerHost
             CultureInfo c = CultureInfo.InvariantCulture;
             try
             {
-                switch (f[3])
+                string opcode = f[3];
+                if (opcode == null || opcode.Length != 1)
                 {
-                    case "b":
+                    return false;
+                }
+
+                switch (opcode[0])
+                {
+                    case 'b':
                         anim.SetBonePosition(obj, uint.Parse(f[4], c), new Vector3(float.Parse(f[5], c), float.Parse(f[6], c), float.Parse(f[7], c)), float.Parse(f[8], c));
                         break;
-                    case "r":
+                    case 'r':
                         anim.SetBoneTimeRotation(obj, uint.Parse(f[4], c), float.Parse(f[5], c));
                         break;
-                    case "t":
+                    case 't':
                         anim.CreateTransformController(obj);
                         break;
-                    case "m":
+                    case 'm':
                         anim.CreateTimeController(obj);
                         break;
-                    case "p":
+                    case 'p':
                         anim.PlayAnimation(obj, uint.Parse(f[4], c), KeyAt(f, 5), float.Parse(f[8], c), false);
                         break;
-                    case "s":
+                    case 's':
                         anim.StartPose(obj, uint.Parse(f[4], c), KeyAt(f, 5));
                         break;
-                    case "z":
+                    case 'z':
                         anim.StopAllAnimation(obj);
                         break;
-                    case "f":
+                    case 'f':
                         anim.ForceAnimation(obj, f[4] == "1");
                         break;
-                    case "q":
+                    case 'q':
                         {
                             string[] keyText = f[8] == "-" ? new string[0] : f[8].Split(';');
                             ResourceKey[] keys = new ResourceKey[keyText.Length];
@@ -8332,7 +8346,7 @@ namespace SimsOnlineServerHost
                             sClientClipControllers[obj.Value.ToString(c) + ":" + f[4]] = local;
                             break;
                         }
-                    case "w":
+                    case 'w':
                         {
                             uint local;
                             string key = obj.Value.ToString(c) + ":" + f[5];
@@ -8344,19 +8358,19 @@ namespace SimsOnlineServerHost
 
                             break;
                         }
-                    case "d":
+                    case 'd':
                         anim.EnableDisableForceDiscontinuousOnParenting(obj, f[4] == "1");
                         break;
-                    case "l":
+                    case 'l':
                         anim.EnableDisableLargeAnimalEvalNode(obj, f[4] == "1");
                         break;
-                    case "g":
+                    case 'g':
                         anim.EnableDisableScubaDivingMode(obj, f[4] == "1", f[5] == "1");
                         break;
-                    case "h":
+                    case 'h':
                         anim.SetLookAtsHidden(obj, f[4] == "1");
                         break;
-                    case "a":
+                    case 'a':
                         if (obj.ObjectFromId<Sim>() != null)
                         {
                             return true; // a Sim's procedural motion is the motion pass's (internal documentation)
@@ -8484,29 +8498,34 @@ namespace SimsOnlineServerHost
                     return true;
                 }
 
-                switch (op)
+                if (op == null || op.Length != 1)
                 {
-                    case "s":
+                    return false;
+                }
+
+                switch (op[0])
+                {
+                    case 's':
                         fx.Start((VisualEffect.TransitionType)int.Parse(f[5], c), false);
                         return true;
-                    case "x":
+                    case 'x':
                         fx.Stop((VisualEffect.TransitionType)int.Parse(f[5], c));
                         return true;
-                    case "o":
+                    case 'o':
                         fx.SetPosAndOrient(new Vector3(float.Parse(f[5], c), float.Parse(f[6], c), float.Parse(f[7], c)),
                             new Vector3(float.Parse(f[8], c), float.Parse(f[9], c), float.Parse(f[10], c)),
                             new Vector3(float.Parse(f[11], c), float.Parse(f[12], c), float.Parse(f[13], c)));
                         return true;
-                    case "k":
+                    case 'k':
                         return fx.SetEffectColorScale(float.Parse(f[5], c), float.Parse(f[6], c), float.Parse(f[7], c));
-                    case "m":
+                    case 'm':
                         return fx.SetEffectModelOverride(int.Parse(f[5], c), int.Parse(f[6], c));
-                    case "t":
+                    case 't':
                         return fx.SetEffectTextureOverride(ulong.Parse(f[5], c), int.Parse(f[6], c), uint.Parse(f[7], c));
-                    case "2":
+                    case '2':
                         return fx.SetEffectDoubleTextureOverride(ulong.Parse(f[5], c), int.Parse(f[6], c), uint.Parse(f[7], c),
                             ulong.Parse(f[8], c), int.Parse(f[9], c), uint.Parse(f[10], c));
-                    case "n":
+                    case 'n':
                         {
                             ThumbnailKey key;
                             if (!DecodeIcon(f[5], out key))
@@ -8516,11 +8535,11 @@ namespace SimsOnlineServerHost
 
                             return fx.SetEffectThumbnailTextureOverride(key, int.Parse(f[6], c));
                         }
-                    case "h":
+                    case 'h':
                         return fx.SetEffectHeadlineTextureOverride(BridgeCodec.DecodeText(f[5]));
-                    case "l":
+                    case 'l':
                         return fx.SetEffectLifeScale(float.Parse(f[5], c));
-                    case "a":
+                    case 'a':
                         fx.SetAutoDestroy(f[5] == "1");
                         if (f[5] == "1")
                         {
@@ -8528,12 +8547,12 @@ namespace SimsOnlineServerHost
                         }
 
                         return true;
-                    case "v":
+                    case 'v':
                         fx.SetNeverHide(f[5] == "1");
                         return true;
-                    case "f":
+                    case 'f':
                         return fx.SetFloatParams(int.Parse(f[5], c), ParseFloats(f[6]));
-                    case "i":
+                    case 'i':
                         {
                             int type = int.Parse(f[5], c);
                             int[] values = ParseInts(f[6]);
@@ -8549,10 +8568,10 @@ namespace SimsOnlineServerHost
 
                             return fx.SetIntParams(type, values);
                         }
-                    case "b":
+                    case 'b':
                         fx.SetUseBoneParenting(f[5] == "1");
                         return true;
-                    case "g":
+                    case 'g':
                         {
                             GameObject target = ReplayObject(ulong.Parse(f[5], c)).ObjectFromId<GameObject>();
                             if (target == null)
@@ -8563,7 +8582,7 @@ namespace SimsOnlineServerHost
                             return fx.SetTargetObjectAndSlotOrBone(target, (Slot)uint.Parse(f[6], c),
                                 new Vector3(float.Parse(f[7], c), float.Parse(f[8], c), float.Parse(f[9], c)), f[10] == "1");
                         }
-                    case "d":
+                    case 'd':
                         sClientEffects.Remove(id);
                         fx.Dispose();
                         sVfxDisposed++;
@@ -10817,6 +10836,23 @@ namespace SimsOnlineServerHost
         }
 
         // The body of SACS_REPLAY: applies one batch of the server's recorded lines and returns the report.
+        // Pack the exact wire tag into an integer so the legacy compiler does not emit a string-switch dictionary.
+        // A nonzero second character keeps two-character tags distinct from one-character tags.
+        private static int ReplayDriverTag(string kind)
+        {
+            if (kind.Length == 1)
+            {
+                return kind[0];
+            }
+
+            if (kind.Length == 2 && kind[1] != '\0')
+            {
+                return kind[0] | (kind[1] << 16);
+            }
+
+            return 0;
+        }
+
         private static string ApplyReplayBatch(string[] batchLines)
         {
             LineKindCounts.AddLines(sReplayReceivedByKind, batchLines); // as they arrive, before pending or held lines join
@@ -11337,9 +11373,9 @@ namespace SimsOnlineServerHost
                         continue;
                     }
 
-                    switch (kind)
+                    switch (ReplayDriverTag(kind))
                     {
-                        case "S":
+                        case 'S':
                             ObjectGuid actor = ReplayObject(ulong.Parse(f[4], c));
                             if (!actor.IsValid)
                             {
@@ -11358,25 +11394,25 @@ namespace SimsOnlineServerHost
 
                             proxy.SetActor(driver, uint.Parse(f[3], c), actor);
                             break;
-                        case "P":
+                        case 'P':
                             proxy.SetParam(driver, uint.Parse(f[3], c), uint.Parse(f[4], c));
                             break;
-                        case "Ps":
+                        case 'P' | ('s' << 16):
                             proxy.SetParam(driver, uint.Parse(f[3], c), f.Length > 4 ? f[4] : "");
                             break;
-                        case "Pn":
+                        case 'P' | ('n' << 16):
                             proxy.SetParam(driver, f[3], f[4], f.Length > 5 ? f[5] : "");
                             break;
-                        case "Ph":
+                        case 'P' | ('h' << 16):
                             proxy.SetParam(driver, f[3], f[4], uint.Parse(f[5], c));
                             break;
-                        case "E":
+                        case 'E':
                             sRepairEntries.NoteLine(driver, kind);
                             proxy.EnterState(driver, uint.Parse(f[3], c), uint.Parse(f[4], c));
                             sReplayStates.Set(serverDriver, uint.Parse(f[3], c), uint.Parse(f[4], c));
                             NoteStreamAnimated(serverDriver);
                             break;
-                        case "R":
+                        case 'R':
                             // seq|R|driver|actor|state|flags|actorObject[|wakeup|timeout|bridgeDriver|bridgeActor]. The bridge is a
                             // server driver: this client's own for it, or none when it plays no such driver. A history line
                             // (seq 0) is a path to the current state, not a hand-off under way: it waits on no bridge.
@@ -11495,32 +11531,32 @@ namespace SimsOnlineServerHost
                                 }
                             }
                             break;
-                        case "I":
+                        case 'I':
                             sRepairEntries.NoteLine(driver, kind);
                             proxy.Interrupt(driver, uint.Parse(f[3], c));
                             break;
-                        case "Se":
+                        case 'S' | ('e' << 16):
                             // seq|Se|driver|state: the server's machine entered a state (StateCatchUp, sacs.catchup on).
                             StateCatchUp.ServerEntered(serverDriver, uint.Parse(f[3], c), sReplayDrivers);
                             break;
-                        case "Pa":
+                        case 'P' | ('a' << 16):
                             proxy.Pause(driver, uint.Parse(f[3], c));
                             break;
-                        case "Co":
+                        case 'C' | ('o' << 16):
                             proxy.Continue(driver, uint.Parse(f[3], c));
                             break;
-                        case "AS":
+                        case 'A' | ('S' << 16):
                             // seq|AS|driver|contextSeed|spareSeed ( tier 1, sacs.seed-copy): the server driver's seeds,
                             // sent before its first draw; a borrowed driver keeps its own.
                             SacsSeedCopy.Apply(serverDriver, driver, sReplayBorrowed.ContainsKey(serverDriver), f);
                             break;
-                        case "AW":
+                        case 'A' | ('W' << 16):
                             // seq|AW|driver|spare|g:d:b:e|... ( option C, sacs.walker-copy): the server driver's walker
                             // counters, borrowed driver or not (SimLink's, not the game's). Not kept for a re-resolve
                             // (ReplaySetupCache leaves it out): SacsSeedCopy.Apply carries the old copy's counts instead.
                             SacsWalkerCopy.Apply(serverDriver, driver, f);
                             break;
-                        case "X":
+                        case 'X':
                             sRepairEntries.NoteLine(driver, kind);
                             ReleaseReplayDriver(proxy, serverDriver, driver);
                             break;
@@ -12728,6 +12764,52 @@ namespace SimsOnlineServerHost
                 return (T)v;
             }
 
+            private delegate object VerbHandler(object[] a, string verb);
+
+            // Explicit table instead of `switch (verb)` so .NET 2 csc never emits a
+            // <PrivateImplementationDetails> Dictionary<string, int> static field inside TS3 Mono.
+            private static readonly Dictionary<string, VerbHandler> sVerbs = BuildVerbs();
+
+            private static Dictionary<string, VerbHandler> BuildVerbs()
+            {
+                Dictionary<string, VerbHandler> map = new Dictionary<string, VerbHandler>();
+                // authority / state (read-only to handler)
+                map.Add(HandlerVerbs.GetRole, delegate(object[] a, string verb) { return sCurrentRole; });
+                map.Add(HandlerVerbs.GetSpeed, delegate(object[] a, string verb) { return sCurrentSpeed; });
+                // resolution (engine types — shared by ref DLL, castable handler-side)
+                map.Add(HandlerVerbs.FindSim, delegate(object[] a, string verb) { return FindSim(Arg<ulong>(a, verb, 1)); });
+                map.Add(HandlerVerbs.FindHousehold, delegate(object[] a, string verb) { return FindHousehold(Arg<ulong>(a, verb, 1)); });
+                // codec free-text (hex wire encoding stays shell-side; BridgeCodec is internal)
+                map.Add(HandlerVerbs.EncodeText, delegate(object[] a, string verb) { return BridgeCodec.EncodeText(Arg<string>(a, verb, 1)); });
+                map.Add(HandlerVerbs.DecodeText, delegate(object[] a, string verb) { return BridgeCodec.DecodeText(Arg<string>(a, verb, 1)); });
+                // deferred state write (handler can't reach the shell's pending-apply queue)
+                map.Add(HandlerVerbs.EnqueuePendingPositionApply, delegate(object[] a, string verb)
+                {
+                    EnqueuePendingPositionApply(Arg<ulong>(a, verb, 1), Arg<Vector3>(a, verb, 2));
+                    return null;
+                });
+                map.Add(HandlerVerbs.RepairOrphanedSocializingPosture, delegate(object[] a, string verb) { return RepairOrphanedSocializingPosture(Arg<Sim>(a, verb, 1)); });
+                // a client route walks this Sim; the position mirror leaves it alone
+                map.Add(HandlerVerbs.RouteHeld, delegate(object[] a, string verb) { return IsRouteHeld(Arg<ulong>(a, verb, 1), Arg<Vector3>(a, verb, 2)); });
+                // replies: built shell-side so the handler never names BridgeCodec (internal)
+                map.Add(HandlerVerbs.SendOk, delegate(object[] a, string verb)
+                {
+                    SendLine(BridgeCodec.Ok(Arg<string>(a, verb, 1)));
+                    return null;
+                });
+                map.Add(HandlerVerbs.SendError, delegate(object[] a, string verb)
+                {
+                    SendLine(BridgeCodec.Error(Arg<string>(a, verb, 1), Arg<string>(a, verb, 2)));
+                    return null;
+                });
+                map.Add(HandlerVerbs.SendReply, delegate(object[] a, string verb)
+                {
+                    SendHandlerReply(Arg<string>(a, verb, 1), Arg<string>(a, verb, 2), Arg<string>(a, verb, 3), Arg<string>(a, verb, 4));
+                    return null;
+                });
+                return map;
+            }
+
             public static object Service(object[] a)
             {
                 if (a == null || a.Length < 1 || !(a[0] is string))
@@ -12735,76 +12817,42 @@ namespace SimsOnlineServerHost
                     throw new ArgumentException("service call requires a string verb as arg 0");
                 }
                 string verb = (string)a[0];
-                switch (verb)
+                VerbHandler handler;
+                if (sVerbs.TryGetValue(verb, out handler))
                 {
-                    // authority / state (read-only to handler)
-                    case HandlerVerbs.GetRole:
-                        return sCurrentRole;
-                    case HandlerVerbs.GetSpeed:
-                        return sCurrentSpeed;
-                    // resolution (engine types — shared by ref DLL, castable handler-side)
-                    case HandlerVerbs.FindSim:
-                        return FindSim(Arg<ulong>(a, verb, 1));
-                    case HandlerVerbs.FindHousehold:
-                        return FindHousehold(Arg<ulong>(a, verb, 1));
-                    // codec free-text (hex wire encoding stays shell-side; BridgeCodec is internal)
-                    case HandlerVerbs.EncodeText:
-                        return BridgeCodec.EncodeText(Arg<string>(a, verb, 1));
-                    case HandlerVerbs.DecodeText:
-                        return BridgeCodec.DecodeText(Arg<string>(a, verb, 1));
-                    // deferred state write (handler can't reach the shell's pending-apply queue)
-                    case HandlerVerbs.EnqueuePendingPositionApply:
-                        EnqueuePendingPositionApply(Arg<ulong>(a, verb, 1), Arg<Vector3>(a, verb, 2));
-                        return null;
-                    case HandlerVerbs.RepairOrphanedSocializingPosture:
-                        return RepairOrphanedSocializingPosture(Arg<Sim>(a, verb, 1));
-                    // a client route walks this Sim; the position mirror leaves it alone
-                    case HandlerVerbs.RouteHeld:
-                        return IsRouteHeld(Arg<ulong>(a, verb, 1), Arg<Vector3>(a, verb, 2));
-                    // replies: built shell-side so the handler never names BridgeCodec (internal)
-                    case HandlerVerbs.SendOk:
-                        SendLine(BridgeCodec.Ok(Arg<string>(a, verb, 1)));
-                        return null;
-                    case HandlerVerbs.SendError:
-                        SendLine(BridgeCodec.Error(Arg<string>(a, verb, 1), Arg<string>(a, verb, 2)));
-                        return null;
-                    case HandlerVerbs.SendReply:
-                        SendHandlerReply(Arg<string>(a, verb, 1), Arg<string>(a, verb, 2), Arg<string>(a, verb, 3), Arg<string>(a, verb, 4));
-                        return null;
-                    default:
-                        throw new NotSupportedException("unknown service verb: " + verb);
+                    return handler(a, verb);
                 }
+                throw new NotSupportedException("unknown service verb: " + verb);
             }
+        }
+
+        private delegate string ProbeReplyEncoder(string corrId, string kind, string report);
+
+        private static readonly Dictionary<string, ProbeReplyEncoder> sHandlerReplyEncoders = BuildHandlerReplyEncoders();
+
+        private static Dictionary<string, ProbeReplyEncoder> BuildHandlerReplyEncoders()
+        {
+            Dictionary<string, ProbeReplyEncoder> map = new Dictionary<string, ProbeReplyEncoder>();
+            map.Add("SimStatusProbe", BridgeCodec.SimStatusProbe);
+            map.Add("SimMotiveProbe", BridgeCodec.SimMotiveProbe);
+            map.Add("SimInteractionQueueProbe", BridgeCodec.SimInteractionQueueProbe);
+            map.Add("HouseholdCashProbe", BridgeCodec.HouseholdCashProbe);
+            map.Add("SimSkillProbe", BridgeCodec.SimSkillProbe);
+            map.Add("SimAutonomyProbe", BridgeCodec.SimAutonomyProbe);
+            return map;
         }
 
         // T5b: kind-switched reply builder so the handler never names BridgeCodec (shell-internal).
         // probeKind selects the wire report shape; corrId/kind/report are the usual triplet.
         private static void SendHandlerReply(string probeKind, string corrId, string kind, string report)
         {
-            switch (probeKind)
+            ProbeReplyEncoder encoder;
+            if (probeKind != null && sHandlerReplyEncoders.TryGetValue(probeKind, out encoder))
             {
-                case "SimStatusProbe":
-                    SendLine(BridgeCodec.SimStatusProbe(corrId, kind, report));
-                    break;
-                case "SimMotiveProbe":
-                    SendLine(BridgeCodec.SimMotiveProbe(corrId, kind, report));
-                    break;
-                case "SimInteractionQueueProbe":
-                    SendLine(BridgeCodec.SimInteractionQueueProbe(corrId, kind, report));
-                    break;
-                case "HouseholdCashProbe":
-                    SendLine(BridgeCodec.HouseholdCashProbe(corrId, kind, report));
-                    break;
-                case "SimSkillProbe":
-                    SendLine(BridgeCodec.SimSkillProbe(corrId, kind, report));
-                    break;
-                case "SimAutonomyProbe":
-                    SendLine(BridgeCodec.SimAutonomyProbe(corrId, kind, report));
-                    break;
-                default:
-                    SendLine(BridgeCodec.Error(corrId, "unknown reply kind: " + probeKind));
-                    break;
+                SendLine(encoder(corrId, kind, report));
+                return;
             }
+            SendLine(BridgeCodec.Error(corrId, "unknown reply kind: " + probeKind));
         }
 
         // T5b: the loaded swappable handler set. Resolved by reflection (by NAME — no shared type):

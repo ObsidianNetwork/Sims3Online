@@ -2356,6 +2356,16 @@ def run_scenario(spec: dict, out: Path) -> dict:
         record.update(verdict="RESET-FAILED", met=False, failures=[scrub(p) for p in problems])
         return record
     replay_before = replay_snapshot(False)  # after the reset: its repairs are not the scenario's
+    if replay_before and ("error" in replay_before or any(
+        "error" in counters for counters in replay_before.get("counters", {}).values()
+    )):
+        # A client can die during reset while the server still accepts actions. Confirm the missing replay read with
+        # the normal health check, since a replay diagnostic can fail while the game's bridge is still responsive.
+        if problem := health():
+            record["log"].append("## stack health after reset\n" + problem)
+            record["timings"]["total"] = record["timings"]["reset"]
+            mark_crashed(record, problem, over="cut short")
+            return record
     # rose: excludes reset and premise effects; a successful premise refreshes this baseline after its fault injection.
     rose_before = {c: read_counter(c, endpoints, watched)[0] for c in spec.get("after", []) if c.startswith("rose:")}
 

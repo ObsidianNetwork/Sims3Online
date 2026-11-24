@@ -103,7 +103,9 @@ def main() -> int:
     if stack_claim.refuse_build(parser.parse_args().force):
         return 3
     shell_sources = [p for p in MOD.glob("*.cs") if p.name != "Sims3PackageBuilder.cs"]
+    handler_sources = sorted((MOD / "Handlers").glob("*.cs"))
     problems = check("shell", shell_sources, keep=True)
+    problems += check("handlers", handler_sources, keep=True)
     # The module against the shell just compiled from these sources. bin/Release's DLL is the last make-mod's: after a
     # merge that adds shell API the module uses, it reported the new calls as missing (2026-10-21). If the shell has a
     # known System.IO use (KNOWN), that fails the runtime compile, so a reference DLL is compiled with a stub for it
@@ -118,15 +120,25 @@ def main() -> int:
         shell_dll = MOD / "bin" / "Release" / "SimsOnlineServerHostMod.dll"
         print("module checked against the last make-mod's shell DLL (the shell did not compile from these sources)")
     if shell_dll.exists():
-        problems += check("module", module_sources, [shell_dll])
+        problems += check("module", module_sources, [shell_dll], keep=True)
     else:
         # No shell DLL even with the stub and no make-mod DLL either: the module is compiled together with the shell's
         # sources (their allow-listed System.IO errors filtered as above).
         problems += [p for p in check("module", shell_sources + module_sources) if p not in problems]
-    try:
-        shell_output("shell").unlink()
-    except OSError:
-        pass
+
+    import check_mod_mono_safety
+
+    for h in check_mod_mono_safety.scan_mod_sources(MOD):
+        problems.append("MONO SAFETY (source): " + h.format())
+    for label in ("shell", "handlers", "module"):
+        dll = shell_output(label)
+        if dll.exists():
+            for h in check_mod_mono_safety.scan_clr_hazards(pe_path=dll, label=label):
+                problems.append("MONO SAFETY (CLR): " + h.format())
+            try:
+                dll.unlink()
+            except OSError:
+                pass
     for p in problems:
         print("NOT IN THE GAME'S RUNTIME: " + p)
     print(f"mod runtime check: {'ok' if not problems else str(len(problems)) + ' problem(s)'}")

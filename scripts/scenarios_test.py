@@ -1990,19 +1990,22 @@ class CrashedVerdict(unittest.TestCase):
     """The scenario a game went down in reads CRASHED (C), not FAIL: D's old-save window (2026-10-18) had all three
     of its crashes inside a scenario that read F."""
 
-    def run_suite(self, healths: list[str | None]) -> tuple[int, list[dict], str]:
-        """`scenarios.py run a b c` on fakes: health() answers healths in turn (the check before the run, before b, before
-        c, then after the last); each scenario passes in 30 s."""
+    def run_suite(
+        self, healths: list[str | None], middle: Callable[[dict, Path], dict] | None = None
+    ) -> tuple[int, list[dict], str]:
+        """`scenarios.py run a b c` on fakes. health() answers in turn; each scenario passes unless overridden."""
         answers = iter(healths)
         specs = [{"name": n, "summary": "", "expect": "pass"} for n in ("a", "b", "c")]
 
         def scenario(spec: dict, out: Path) -> dict:
+            if middle is not None and spec["name"] == "b":
+                return middle(spec, out)
             return {"name": spec["name"], "summary": "", "expect": "pass", "failures": [], "verdict": "PASS", "met": True,
                     "log": [], "images": [], "timings": {"total": 30.0}}
 
         with tempfile.TemporaryDirectory() as folder, \
                 mock.patch.object(sc, "RUNS", Path(folder)), mock.patch.object(sc, "load", return_value=specs), \
-                mock.patch.object(sc, "health", side_effect=lambda: next(answers)), \
+                mock.patch.object(sc, "health", side_effect=lambda: next(answers)), mock.patch.object(sc, "WATCHED", []), \
                 mock.patch.object(sc, "run_scenario", side_effect=scenario), mock.patch.object(sc, "python", return_value=(0, "")), \
                 mock.patch.object(sc, "crashes_since", return_value=[]), mock.patch.object(sc, "debugged_now", return_value={}), \
                 mock.patch.object(sc, "client_module", return_value="m"), mock.patch.object(sc, "apply_tunes", return_value=([], [])), \
@@ -2025,6 +2028,39 @@ class CrashedVerdict(unittest.TestCase):
         self.assertIn("| b | CRASHED | pass |", table)
         rows = [m.group(2) for m in map(sc.ROW.match, table.splitlines()) if m]  # load_run's reader for old runs
         self.assertEqual(rows, ["PASS", "CRASHED", "BLOCKED"])
+
+    def test_client_death_during_reset_stops_the_host_action_and_blocks_the_next_scenario(self) -> None:
+        down = "stack down: client no answer (crash report xcpt 1.txt: BREAKPOINT)"
+        unread = {"counters": {"client1": {"error": "no answer"}}}
+        run_scenario = sc.run_scenario
+
+        def middle(spec: dict, out: Path) -> dict:
+            steps = ["act:Pablo near:Shower TakeShower --wait 40"]
+            with mock.patch.object(sc, "reset", return_value="reset attempted"), \
+                    mock.patch.object(sc, "replay_snapshot", return_value=unread), \
+                    mock.patch.object(sc, "python", return_value=(0, "running")) as call:
+                record = run_scenario(dict(spec, steps=steps), out)
+            call.assert_not_called()
+            return record
+
+        code, records, table = self.run_suite([None, None, down, down], middle)
+        self.assertEqual((code, [r["verdict"] for r in records]), (6, ["PASS", "CRASHED", "BLOCKED"]))
+        self.assertEqual(records[1]["failures"], [down])
+        self.assertEqual(records[1]["timings"]["total"], records[1]["timings"]["reset"])
+        self.assertIn("## stack health after reset\n" + down, table)
+
+    def test_failed_replay_read_with_a_healthy_stack_can_still_run_the_scenario(self) -> None:
+        spec = {"name": "shower", "steps": ["act:Pablo near:Shower TakeShower --wait 40"]}
+        unread = {"counters": {"client1": {"error": "no answer"}}}
+        with tempfile.TemporaryDirectory() as folder, \
+                mock.patch.object(sc, "reset", return_value="reset attempted"), \
+                mock.patch.object(sc, "replay_snapshot", return_value=unread), \
+                mock.patch.object(sc, "health", return_value=None) as health, \
+                mock.patch.object(sc, "python", return_value=(0, "running")) as call:
+            record = sc.run_scenario(spec, Path(folder))
+        health.assert_called_once_with()
+        call.assert_called_once_with("scripts/sim_act.py", "Pablo", "near:Shower", "TakeShower", "--wait", "40")
+        self.assertEqual(record["verdict"], "PASS")
 
     def test_a_death_in_the_last_scenario_is_found_after_it(self) -> None:
         code, records, _ = self.run_suite([None, None, None, "stack down: client no answer"])
