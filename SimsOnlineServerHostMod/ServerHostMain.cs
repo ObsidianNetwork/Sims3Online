@@ -5671,6 +5671,43 @@ namespace SimsOnlineServerHost
         private static FieldInfo sSmcScript;
         private static FieldInfo sSmcActorNames;
 
+        internal static bool PresentationDriverOwned(uint handle, ulong objectId)
+        {
+            if (objectId == 0uL)
+            {
+                return false;
+            }
+            Sim sim = new ObjectGuid(objectId).ObjectFromId<Sim>();
+            if (sim == null)
+            {
+                return false;
+            }
+            Posture posture = sim.Posture;
+            for (int depth = 0; posture != null && depth < 6; depth++)
+            {
+                if (DriverHandleOf(posture.CurrentStateMachine) == handle)
+                {
+                    return true;
+                }
+                posture = posture.PreviousPosture;
+            }
+            if (sim.Standing != null && DriverHandleOf(sim.Standing.CurrentStateMachine) == handle)
+            {
+                return true;
+            }
+            if (sim.InteractionQueue != null)
+            {
+                foreach (InteractionInstance interaction in sim.InteractionQueue.InteractionList)
+                {
+                    if (interaction != null && DriverHandleOf(interaction.mCurrentStateMachine) == handle)
+                    {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
         private static void AdoptTargetDrivers(Dictionary<ulong, bool> targets, bool force)
         {
             if (targets == null || targets.Count == 0 || (!force && sBridgeProbeTicks - sLastAdoptTick < 4))

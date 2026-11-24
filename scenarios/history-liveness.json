@@ -1,0 +1,10 @@
+{
+  "name": "history-liveness",
+  "summary": "Actual native completion and managed ownership agree with history selection: valid posture and interaction layers survive, and finished unowned drivers are omitted.",
+  "steps": [
+    "act:Jennifer inv:PhoneSmart BrowseTheWeb --wait 40",
+    "until:server:Jennifer:^(?:[^|]*\\|){14}8c544a4837c2f1ef::60",
+    "probe:server:scripts/probes/HistoryLivenessProbe.cs"
+  ],
+  "expect": "pass"
+}

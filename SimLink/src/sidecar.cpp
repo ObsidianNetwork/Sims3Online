@@ -65,6 +65,7 @@
 #include "onscreen.h"
 #include "free_ring.h"
 #include "gc_heap.h"
+#include "sequence_guard.h"
 #include "gc_gate.h"
 #include "ring.h"
 #include "sacs_patch.h"
@@ -412,8 +413,36 @@ unsigned char* ResolveDriver(uint32_t handle)
     return driver;
 }
 
-// which: 0 = the Random-node seed (driver +0xA8), 1 = the spare seed (+0x34). Returns the seed, or 0 when the handle
-// does not resolve to a driver or the code sites differ (0 is also what the game treats as "reseed").
+// the same read-only predicate used by the engine's finished-machine cleanup
+// (RVA 0x54e940/0x54e9c0). It checks pending requests, graph activity and actor state work,
+// not reference lifetime or which other driver most recently animated the host.
+int __cdecl SimLinkSacsHasNoPendingWork(int handle)
+{
+    __try
+    {
+        constexpr uintptr_t kPredicateVa = 0x008006F0;
+        constexpr size_t kPredicateLength = 25;
+        constexpr simlink::SiteDigest kPredicateDigest = {0x85C964F24A818934ULL, 0xF06C21A9B2B8A2E9ULL};  // no-pending-work predicate entry check (25 bytes)
+        if (!SeedSitesMatch() ||
+            !simlink::SiteDigestMatches(kPredicateVa, kPredicateLength, kPredicateDigest))
+        {
+            return -1;
+        }
+        unsigned char* driver = ResolveDriver(static_cast<uint32_t>(handle));
+        if (driver == nullptr)
+        {
+            return -1;
+        }
+        typedef unsigned char(__fastcall* FinishedFn)(void*, void*);
+        return reinterpret_cast<FinishedFn>(kPredicateVa)(driver, nullptr) != 0 ? 1 : 0;
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER)
+    {
+        return -1;
+    }
+}
+
+// which: 0 = the Random-node seed (driver +0xA8), 1 = the spare seed (+0x34). Returns zero when unavailable.
 int __cdecl SimLinkSacsReadSeed(int handle, int which)
 {
     __try
@@ -500,6 +529,8 @@ uint32_t RegisterInternalCalls()
         add("SimsOnlineServerHost.SimLinkNative::InboundRead", reinterpret_cast<const void*>(&SimLinkInboundRead));
         add("SimsOnlineServerHost.SimLinkNative::SacsReadSeed", reinterpret_cast<const void*>(&SimLinkSacsReadSeed));
         add("SimsOnlineServerHost.SimLinkNative::SacsWriteSeeds", reinterpret_cast<const void*>(&SimLinkSacsWriteSeeds));
+        add("SimsOnlineServerHost.SimLinkNative::SacsHasNoPendingWork", reinterpret_cast<const void*>(&SimLinkSacsHasNoPendingWork));
+        add("SimsOnlineServerHost.SimLinkNative::SacsSequenceDrain", reinterpret_cast<const void*>(&simlink::sequenceguard::Counter));
         add("SimsOnlineServerHost.SimLinkNative::SacsSetSwitches", reinterpret_cast<const void*>(&simlink::sacs::SetSwitches));
         add("SimsOnlineServerHost.SimLinkNative::SacsPatchState", reinterpret_cast<const void*>(&simlink::sacs::PatchStateIcall));
         add("SimsOnlineServerHost.SimLinkNative::SacsPickCount", reinterpret_cast<const void*>(&simlink::sacs::PickCount));
@@ -647,6 +678,7 @@ BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID)
         if (IsGameProcess())
         {
             simlink::sacs::Install(module);  // before the game runs any SACS code
+            simlink::sequenceguard::Install(module);  // check each sequence-list head before reading clip data
             simlink::gc::Install(module);    // with SIMLINK_GCGATE=1 only; before the frame loop first runs (the
                                              // rel32 it writes is unaligned)
             simlink::freering::Install(module);  // with SIMLINK_FREERING=1 only; before the game runs

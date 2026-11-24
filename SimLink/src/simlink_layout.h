@@ -23,7 +23,9 @@ constexpr uint32_t kLayoutVersion = 1;
 constexpr uint32_t kHeaderSize = 256;
 constexpr uint32_t kDefaultRingSize = 4u << 20;  // 4 MB, a power of two
 constexpr uint32_t kRecordHeader = 24;
-constexpr int32_t kNativeVersion = 15;  // 2: SacsReadSeed / SacsWriteSeeds ( tier 1); 3: tier 3 picks;
+constexpr int32_t kNativeVersion = 17;  // 17: sequence-list exhaustion precheck
+                                       // 16: read-only SACS finished-machine predicate
+                                       // 2: SacsReadSeed / SacsWriteSeeds (tier 1); 3: tier 3 picks;
                                        // 4: site A' order log; 5: item 3 keyed Random draw (SacsRandomCounter);
                                        // 6: item 3's input log (SacsRandomCount, SacsRandomWord);
                                        // 7: GC rate gate (SacsGcCounter, SacsGcInterval);

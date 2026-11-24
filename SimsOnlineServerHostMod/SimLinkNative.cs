@@ -48,6 +48,14 @@ namespace SimsOnlineServerHost
         [MethodImpl(MethodImplOptions.InternalCall)]
         internal static extern int SacsReadSeed(uint driverHandle, int which);
 
+        // Native v16: 1 no pending work, 0 work remains, -1 unavailable. Live owners are a separate check.
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        internal static extern int SacsHasNoPendingWork(uint driverHandle);
+
+        // Native v17: sequence-list guard state, checks and prevented sentinel reads.
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        internal static extern int SacsSequenceDrain(int which);
+
         // Writes the non-zero seeds into the handle's driver and reads them back: 1 written, 0 no driver, -1 the game's
         // bytes differ from this build, -2 exception, -3 the read-back differs.
         [MethodImpl(MethodImplOptions.InternalCall)]
@@ -372,6 +380,12 @@ namespace SimsOnlineServerHost
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static int HasNoPendingWork(uint driverHandle)
+        {
+            return SimLinkNative.SacsHasNoPendingWork(driverHandle);
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
         internal static int ReadSeed(uint driverHandle, int which)
         {
             return SimLinkNative.SacsReadSeed(driverHandle, which);
@@ -570,6 +584,17 @@ namespace SimsOnlineServerHost
         internal static bool GcHeapReady
         {
             get { return NativeVersion >= 14; }
+        }
+
+        internal static bool SequenceDrainReady
+        {
+            get { return NativeVersion >= 17; }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static int SequenceDrain(int which)
+        {
+            return SimLinkNative.SacsSequenceDrain(which);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]

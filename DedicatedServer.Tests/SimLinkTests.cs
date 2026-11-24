@@ -630,6 +630,14 @@ internal static partial class Program
         Assert(exited && exitCode == 0 && output.Contains("sitedigest ok", StringComparison.Ordinal), "sitedigest: " + output);
     }
 
+    [Test("SimLink.NativeSequenceGuardLogic")]
+    private static void SimLinkNativeSequenceGuardLogic()
+    {
+        string selftest = RequireSimLinkSelftest();
+        (bool exited, int exitCode, string output) = RunSelftest(selftest, "sequenceguard");
+        Assert(exited && exitCode == 0 && output.Contains("sequenceguard ok", StringComparison.Ordinal), "sequenceguard: " + output);
+    }
+
     // Client ring stuck: Reclaim stops routing and returns every line the game hasn't read, in order; later events
     // take the bridge.
     [Test("SimLink.ClientReclaimsStuckBacklog")]

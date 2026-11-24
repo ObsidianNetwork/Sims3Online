@@ -1510,7 +1510,7 @@ namespace SimsOnlineServerHost
             List<KeyValuePair<long, uint>> found = new List<KeyValuePair<long, uint>>();
             foreach (KeyValuePair<uint, Driver> entry in sDrivers)
             {
-                if (!entry.Value.Cosmetic && Targets(entry.Value, targets))
+                if (!entry.Value.Cosmetic && Targets(entry.Value, targets) && !FinishedForHistory(entry.Key))
                 {
                     found.Add(new KeyValuePair<long, uint>(entry.Value.LastStateSequence, entry.Key));
                 }
@@ -1531,6 +1531,29 @@ namespace SimsOnlineServerHost
             }
 
             return handles;
+        }
+
+        private static bool FinishedForHistory(uint handle)
+        {
+            // Native cleanup also requires the absence of external owners. A graph can have no
+            // pending work while its posture still owns a visible idle or carrying layer.
+            if (SimLinkShadow.NativeVersion < 16 || SimLinkShadow.HasNoPendingWork(handle) != 1)
+            {
+                return false;
+            }
+            Driver driver;
+            if (!sDrivers.TryGetValue(handle, out driver) || ServerHostMain.PresentationDriverOwned(handle, driver.Host))
+            {
+                return false;
+            }
+            foreach (ulong actor in driver.Actors.Values)
+            {
+                if (ServerHostMain.PresentationDriverOwned(handle, actor))
+                {
+                    return false;
+                }
+            }
+            return true;
         }
 
         // How many of the driver's calls fell between Head and Tail (0 when none, or the driver is unknown).
@@ -1665,7 +1688,7 @@ namespace SimsOnlineServerHost
             List<string> lines = new List<string>();
             next = -1;
             Driver driver;
-            if (!sDrivers.TryGetValue(handle, out driver))
+            if (!sDrivers.TryGetValue(handle, out driver) || (offset <= 0 && FinishedForHistory(handle)))
             {
                 return lines;
             }

@@ -19,6 +19,7 @@
 #include "ring.h"
 #include "sacs_pick_logic.h"
 #include "sacs_random.h"
+#include "sequence_guard_logic.h"
 #include "site_digest.h"
 
 struct ConsumeCheck
@@ -781,6 +782,59 @@ int WalkerCopyLogic()
     return 0;
 }
 
+int SequenceGuardLogic()
+{
+    struct Node { Node* next; bool stop; };
+    Node sentinel = {nullptr, false};
+    Node stop = {&sentinel, true};
+    Node first = {&stop, false};
+    int bad = 0;
+    uintptr_t next = 0;
+    if (simlink::sequenceguard::AdvanceReadableHead(reinterpret_cast<uintptr_t>(&first),
+                                                    reinterpret_cast<uintptr_t>(&sentinel), nullptr))
+    {
+        ++bad;
+    }
+    if (simlink::sequenceguard::AdvanceReadableHead(reinterpret_cast<uintptr_t>(&sentinel),
+                                                    reinterpret_cast<uintptr_t>(&sentinel), &next))
+    {
+        ++bad;
+    }
+    if (!simlink::sequenceguard::AdvanceReadableHead(reinterpret_cast<uintptr_t>(&first),
+                                                     reinterpret_cast<uintptr_t>(&sentinel), &next)
+        || next != reinterpret_cast<uintptr_t>(&first) + 8u)
+    {
+        ++bad;
+    }
+
+    auto drain = [&sentinel, &bad](Node*& head, bool callbackRemovesStop) {
+        int popped = 0;
+        uintptr_t subobject = 0;
+        while (simlink::sequenceguard::AdvanceReadableHead(reinterpret_cast<uintptr_t>(head),
+                                                           reinterpret_cast<uintptr_t>(&sentinel), &subobject))
+        {
+            if (subobject != reinterpret_cast<uintptr_t>(head) + 8u) ++bad;
+            if (head->stop) break;
+            head = head->next;
+            ++popped;
+            if (callbackRemovesStop) head = &sentinel;
+        }
+        return popped;
+    };
+    Node* head = &sentinel;
+    if (drain(head, false) != 0 || head != &sentinel) ++bad;
+    head = &first;
+    if (drain(head, false) != 1 || head != &stop) ++bad;
+    head = &first;
+    if (drain(head, true) != 1 || head != &sentinel) ++bad;
+    // The list can also exhaust without a stop node; no sentinel payload is read.
+    first.next = &sentinel;
+    head = &first;
+    if (drain(head, false) != 1 || head != &sentinel) ++bad;
+    std::printf("sequenceguard %s\n", bad == 0 ? "ok" : "FAIL");
+    return bad == 0 ? 0 : 1;
+}
+
 // Phase-0 pending-set fallback helper (sacs_pick_logic.h): first non-null bucket's entry[0], or 0 when empty/malformed.
 int PickFallbackLogic()
 {
@@ -891,6 +945,10 @@ int SiteDigestLogic()
 
 int wmain(int argc, wchar_t** argv)
 {
+    if (argc >= 2 && std::wcscmp(argv[1], L"sequenceguard") == 0)
+    {
+        return SequenceGuardLogic();
+    }
     if (argc >= 2 && std::wcscmp(argv[1], L"keyed") == 0)
     {
         return KeyedVectors();

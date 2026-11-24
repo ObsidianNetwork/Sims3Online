@@ -17,7 +17,7 @@ target_compile_options(simlink_ring PUBLIC /W4 /EHa)
 
 # The sidecar: an ASI plugin (a DLL the ASI loader in Game\Bin loads into every TS3W.exe).
 add_library(SimLink SHARED src/sidecar.cpp src/sacs_patch.cpp src/gc_gate.cpp src/free_ring.cpp src/chunk_reserve.cpp
-            src/onscreen.cpp src/gc_heap.cpp)
+            src/onscreen.cpp src/gc_heap.cpp src/sequence_guard.cpp)
 target_link_libraries(SimLink PRIVATE simlink_ring)
 set_target_properties(SimLink PROPERTIES SUFFIX ".asi")
 
