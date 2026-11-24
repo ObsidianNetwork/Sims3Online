@@ -24,6 +24,19 @@ pub const PAGE_LANE: u16 = 6;
 pub const MAX_QUEUED_PAGES: usize = 4096;
 /// `SimLinkShadowReader.RequestRegistration`'s wait in `SimLinkShadowSession.TryStartAsync`.
 pub const REGISTRATION_TIMEOUT: Duration = Duration::from_secs(5);
+/// Minimum native sidecar version required on layout v1 to attach the shared-memory ring reader.
+pub const MIN_NATIVE_VERSION: i32 = 17;
+
+/// Accepts any native build at or above [`MIN_NATIVE_VERSION`] once [`RingReader::open`] has
+/// verified shared-memory `LAYOUT_VERSION` (1). Newer native versions on layout v1 only add
+/// internal calls or telemetry and remain ring-compatible.
+pub fn validate_native_version(native_version: i32) -> Result<i32, String> {
+    if native_version >= MIN_NATIVE_VERSION {
+        Ok(native_version)
+    } else {
+        Err(format!("native_version_below_{MIN_NATIVE_VERSION}:got={native_version}"))
+    }
+}
 
 /// What the driver needs from a ring: pages in, stale pages out, and whether it still works.
 pub trait PageSource {

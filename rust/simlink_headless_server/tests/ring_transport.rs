@@ -8,10 +8,12 @@ use simlink_bridge::ring::{MemorySection,RingReader};
 use std::{io::{BufRead,BufReader,Write},net::{TcpListener,TcpStream},sync::{Arc,Mutex,atomic::{AtomicBool,AtomicU64,Ordering}},time::{Duration,Instant}};
 struct Shared {
     memory:MemorySection, clock:AtomicU64, source_seq:AtomicU64, calls:Mutex<Vec<String>>,
+    admin_calls:Mutex<Vec<String>>,
     hold:AtomicBool, release:AtomicBool, pending:AtomicBool, late_off:AtomicBool, world_calls:AtomicU64,
 }
 impl Shared {fn new()->Arc<Self>{Arc::new(Self{memory:MemorySection::new(1<<18,77),clock:AtomicU64::new(0),source_seq:AtomicU64::new(5),
-    calls:Mutex::new(Vec::new()),hold:AtomicBool::new(false),release:AtomicBool::new(false),pending:AtomicBool::new(false),late_off:AtomicBool::new(false),world_calls:AtomicU64::new(0)})}}
+    calls:Mutex::new(Vec::new()),admin_calls:Mutex::new(Vec::new()),
+    hold:AtomicBool::new(false),release:AtomicBool::new(false),pending:AtomicBool::new(false),late_off:AtomicBool::new(false),world_calls:AtomicU64::new(0)})}}
 struct Driver {fake:FakeDriver,shared:Arc<Shared>,pages:RingPages<MemorySection>,pending:Option<Vec<String>>}
 impl Driver {
     fn answer(&mut self,args:&[String])->String {
@@ -46,6 +48,9 @@ impl GameDriver for Driver {
     fn admin_request(&mut self,request:&simlink_headless_server::admin::Request)->Result<String,DriverError>{
         assert!(!self.stream_request_pending(),"admin bypassed actual pending native IO");
         if request.name.starts_with("LOAD_SAVE"){self.shared.world_calls.fetch_add(1,Ordering::SeqCst);}
+        if request.name == "SACS_RECORDER" {
+            self.shared.admin_calls.lock().unwrap().push(request.args.join(" "));
+        }
         Ok(simlink_headless_server::admin::report("native command reached"))
     }
     fn start_stream_request(&mut self,r:&StreamRequest)->Result<Option<StreamReply>,DriverError>{
@@ -105,10 +110,49 @@ fn startup_quarantines_old_pages_and_managed_stop_waits_for_pending_io_and_prese
     assert!(shared.memory.publish(2,1,0,"mirror must not forward"));
     assert!(shared.memory.publish(PAGE_LANE,i32::MIN+2,0,&format!("seq=2147483650;more=0\n{record}")));
     for c in [&mut c1,&mut c2]{let rows=lines_until(c,record);assert!(!rows.iter().any(|r|r=="2|AW|99"));assert_eq!(rows.iter().filter(|r|r.as_str()==record).count(),1);}
-    for command in ["LOAD_SAVE 66","LOAD_SAVE_MENU 66","SACS_RECORDER ring-off","SACS_RECORDER push-on 0 -","SACS_RECORDER snapshot 10","SACS_RECORDER dump 0 10"]{
+    for command in [
+        "LOAD_SAVE 66",
+        "LOAD_SAVE_MENU 66",
+        "SACS_RECORDER",
+        "SACS_RECORDER ring-off",
+        "SACS_RECORDER push-on 0 -",
+        "SACS_RECORDER push-targets 1",
+        "SACS_RECORDER push-off extra",
+        "SACS_RECORDER sidecar-on",
+        "SACS_RECORDER sidecar-off",
+        "SACS_RECORDER routes-on",
+        "SACS_RECORDER reset",
+        "SACS_RECORDER snapshot 10",
+        "SACS_RECORDER snapshot-driver 7 0",
+        "SACS_RECORDER dump 0 10",
+        "SACS_RECORDER rust-route-off",
+        "SACS_RECORDER rust-simnav-install 10 1",
+    ] {
         let refused=admin(&server,command);assert_eq!(refused["ok"],false,"{command}");assert!(refused["error"].is_string(),"{command}");
     }
     assert_eq!(shared.world_calls.load(Ordering::SeqCst),0);
+    assert!(shared.admin_calls.lock().unwrap().is_empty());
+    for command in [
+        "SACS_RECORDER watch 10 5",
+        "SACS_RECORDER watch-dump 0",
+        "SACS_RECORDER sidecar-status",
+        "SACS_RECORDER stalls 0",
+        "SACS_RECORDER rust-navigation-status",
+    ] {
+        let passed = admin(&server, command);
+        assert_eq!(passed["ok"], true, "{command}");
+        assert_eq!(passed["accepted"], true, "{command}");
+    }
+    assert_eq!(
+        *shared.admin_calls.lock().unwrap(),
+        vec![
+            "watch 10 5",
+            "watch-dump 0",
+            "sidecar-status",
+            "stalls 0",
+            "rust-navigation-status",
+        ]
+    );
     // A genuine same-socket rejoin starts another history IO and holds its final reply.
     shared.hold.store(true,Ordering::SeqCst);
     assert!(c2.exchange("CMD|2|LeaveSession|2|2").starts_with("ACK|2|LeaveSession"));

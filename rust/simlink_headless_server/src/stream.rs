@@ -877,8 +877,9 @@ impl Stream {
                         else if self.ring.off_ready { crate::admin::report("presentation_push_off=ready") }
                         else { "{\"ok\":true,\"accepted\":false,\"reason\":\"presentation_push_off_pending\",\"report\":null}".into() }
                     }
-                    // The motion watch samples objects and never configures the ring: a refused watch leaves a
-                    // server-versus-client comparison with no server track.
+                    // Non-transport-owned recorder sub-verbs (diagnostics, read-only queries, and
+                    // newly added sub-verbs) pass through to the game mod while the transport owns
+                    // the ring; transport-owned controls remain refused below.
                     Some(verb) if crate::ring_control::recorder_diagnostic(verb) => return None,
                     _ => crate::admin::error("recorder control is owned by presentation ring transport"),
                 });

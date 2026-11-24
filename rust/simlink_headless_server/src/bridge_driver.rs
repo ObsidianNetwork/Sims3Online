@@ -649,11 +649,16 @@ impl BridgeGameDriver<LiveBridge> {
             let pages=crate::ring_pages::start(simlink_bridge::ring::open_native(pid,box_name.as_deref()),
                 crate::ring_pages::REGISTRATION_TIMEOUT,mirror,||driver.recorder(&["sidecar-on".into()]).map_err(|e|e.0));
             match pages {
-                Ok(pages) if pages.reader().telemetry().native_version==17 => {
-                    driver.endpoint.set_ring(Box::new(pages));
-                    eprintln!("serve_report|ring_attached|pid={pid}|native_version=17");
+                Ok(pages) => {
+                    let native_version = pages.reader().telemetry().native_version;
+                    match crate::ring_pages::validate_native_version(native_version) {
+                        Ok(version) => {
+                            driver.endpoint.set_ring(Box::new(pages));
+                            eprintln!("serve_report|ring_attached|pid={pid}|native_version={version}");
+                        }
+                        Err(reason) => eprintln!("serve_report|ring_unavailable|reason={reason}"),
+                    }
                 }
-                Ok(_) => eprintln!("serve_report|ring_unavailable|reason=native_version_not_17"),
                 Err(error) => eprintln!("serve_report|ring_unavailable|reason={error}"),
             }
         }
@@ -663,7 +668,7 @@ impl BridgeGameDriver<LiveBridge> {
 
 impl<B: BridgeEndpoint> BridgeGameDriver<B> {
     /// Injectable section for offline native-handshake tests. The live constructor
-    /// additionally requires native17 and holds cooperative PID-reader admission.
+    /// additionally requires `native_version >= 17` on layout v1 and holds cooperative PID-reader admission.
     pub fn start_ring<S:simlink_bridge::ring::Section+'static>(&mut self,
         opened:Result<simlink_bridge::ring::RingReader<S>,simlink_bridge::ring::RingError>,
         timeout:Duration,mirror:bool)->Result<(),String> {

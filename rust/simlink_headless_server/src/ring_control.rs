@@ -119,10 +119,53 @@ pub(crate) fn push_state(report: &str, expected: &str) -> bool {
 /// Native DescribePush includes a coherent examined/source cursor pair.
 /// A recorder reply carries its whole status text, whose sub-reports each end in
 /// `error=-` while healthy. Only an `error=` with a value is a reported error.
-/// Recorder verbs that only observe (the motion watch) and so stay reachable while the transport owns the ring.
+/// Recorder verbs owned by the presentation ring transport (ring/recorder/route lifecycle,
+/// push configuration, sidecar switching, cursor-bearing dumps/snapshots, and Rust route or
+/// navigation mutations). Empty verbs are also refused.
+pub(crate) fn recorder_transport_owned(verb: &str) -> bool {
+    verb.is_empty()
+        || matches!(
+            verb,
+            "on" | "off"
+                | "reset"
+                | "ring-on"
+                | "ring-off"
+                | "routes-on"
+                | "routes-off"
+                | "push-on"
+                | "push-off"
+                | "push-targets"
+                | "push-every"
+                | "pump-ms"
+                | "sidecar-on"
+                | "sidecar-off"
+                | "sidecar-client-on"
+                | "sidecar-client-off"
+                | "sidecar-client-ring"
+                | "sidecar-client-ring-off"
+                | "dump"
+                | "snapshot"
+                | "snapshot-driver"
+                | "rust-route-on"
+                | "rust-route-off"
+                | "rust-plan"
+                | "rust-plan-none"
+                | "rust-road-place-on"
+                | "rust-road-place"
+                | "rust-road-place-none"
+                | "rust-road-place-decline"
+                | "rust-navigation-sync"
+                | "rust-navigation-result"
+                | "rust-navigation-offer"
+                | "rust-simnav-install"
+        )
+}
+
+/// Recorder verbs not owned by the presentation ring transport (diagnostics such as `watch`,
+/// `watch-dump`, `sidecar-status`, read-only inspection queries, and newly added sub-verbs)
+/// pass through to the game mod while the transport owns the ring.
 pub(crate) fn recorder_diagnostic(verb: &str) -> bool {
-    // `sidecar-status` only describes the native registration; the warm restart reads it before a swap.
-    matches!(verb, "watch" | "watch-dump" | "sidecar-status")
+    !recorder_transport_owned(verb)
 }
 
 pub(crate) fn reports_error(report: &str) -> bool {
@@ -159,9 +202,60 @@ mod tests {
     }
 
     #[test]
-    fn only_the_motion_watch_passes_ring_ownership() {
-        assert!(recorder_diagnostic("watch") && recorder_diagnostic("watch-dump") && recorder_diagnostic("sidecar-status"));
-        for verb in ["push-on", "ring-on", "ring-off", "routes-on", "reset", "watch-", "sidecar-on", "sidecar-off", ""] {
+    fn transport_owned_recorder_controls_are_refused_while_diagnostics_pass_through() {
+        for verb in [
+            "watch",
+            "watch-dump",
+            "sidecar-status",
+            "probe",
+            "stalls",
+            "peek",
+            "actor",
+            "local",
+            "rust-navigation-status",
+            "rust-route-plans",
+            "custom-diag",
+        ] {
+            assert!(!recorder_transport_owned(verb), "{verb}");
+            assert!(recorder_diagnostic(verb), "{verb}");
+        }
+        for verb in [
+            "",
+            "on",
+            "off",
+            "reset",
+            "ring-on",
+            "ring-off",
+            "routes-on",
+            "routes-off",
+            "push-on",
+            "push-off",
+            "push-targets",
+            "push-every",
+            "pump-ms",
+            "sidecar-on",
+            "sidecar-off",
+            "sidecar-client-on",
+            "sidecar-client-off",
+            "sidecar-client-ring",
+            "sidecar-client-ring-off",
+            "dump",
+            "snapshot",
+            "snapshot-driver",
+            "rust-route-on",
+            "rust-route-off",
+            "rust-plan",
+            "rust-plan-none",
+            "rust-road-place-on",
+            "rust-road-place",
+            "rust-road-place-none",
+            "rust-road-place-decline",
+            "rust-navigation-sync",
+            "rust-navigation-result",
+            "rust-navigation-offer",
+            "rust-simnav-install",
+        ] {
+            assert!(recorder_transport_owned(verb), "{verb}");
             assert!(!recorder_diagnostic(verb), "{verb}");
         }
     }

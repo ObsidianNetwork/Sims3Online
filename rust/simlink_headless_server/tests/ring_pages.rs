@@ -259,3 +259,31 @@ fn a_corrupt_ring_stops_delivering_and_reports_unavailable() {
     assert!(driver.presentation_pages().is_err(), "persistent failure must never masquerade as idle");
     let _ = driver.endpoint().ring_available();
 }
+
+#[test]
+fn compatible_layout_v1_ring_accepts_native_version_17_and_above() {
+    use simlink_headless_server::ring_pages::validate_native_version;
+
+    assert!(validate_native_version(0).is_err());
+    assert!(validate_native_version(16).is_err());
+    assert_eq!(validate_native_version(17), Ok(17));
+    assert_eq!(validate_native_version(18), Ok(18));
+    assert_eq!(validate_native_version(19), Ok(19));
+
+    for version in [17i32, 18, 19] {
+        let ring = section();
+        ring.poke_u32(off::NATIVE_VERSION, version as u32);
+        let reader = open(&ring).expect("layout v1 section should open cleanly");
+        assert_eq!(validate_native_version(reader.telemetry().native_version), Ok(version));
+    }
+
+    // Layout incompatibility must still be rejected even when native_version is >= 17.
+    let incompatible = section();
+    incompatible.poke_u32(off::NATIVE_VERSION, 18);
+    incompatible.poke_u32(off::LAYOUT_VERSION, 2);
+    let err = match open(&incompatible) {
+        Ok(_) => panic!("layout v2 must not open as v1"),
+        Err(err) => err,
+    };
+    assert!(matches!(err, RingError::BadHeader(_)), "expected BadHeader, got {err:?}");
+}
