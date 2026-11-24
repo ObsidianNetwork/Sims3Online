@@ -1,0 +1,14 @@
+{
+  "name": "environment-authority",
+  "summary": "Both presenters reject local weather staging, hold all local lunar/zombie service timers and keep the native and script season aligned; print moon and weather values beside the server.",
+  "clients": [
+    1,
+    2
+  ],
+  "steps": [
+    "probe:server:scripts/probes/EnvironmentAuthorityProbe.cs",
+    "probe:1:scripts/probes/EnvironmentAuthorityProbe.cs",
+    "probe:2:scripts/probes/EnvironmentAuthorityProbe.cs"
+  ],
+  "expect": "pass"
+}

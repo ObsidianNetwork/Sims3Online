@@ -10416,6 +10416,7 @@ namespace SimsOnlineServerHost
         internal static string ResetPresentation()
         {
             CultureInfo c = CultureInfo.InvariantCulture;
+            EnvironmentReplay.Reset();
             PresentationModules.ResetModule();
             int copies = 0;
             int effects = 0;
@@ -11104,6 +11105,20 @@ namespace SimsOnlineServerHost
                         else
                         {
                             skipped++; RecordReplaySkip(7114, line);
+                        }
+
+                        continue;
+                    }
+
+                    if (kind == "En")
+                    {
+                        if (EnvironmentReplay.Replay(f))
+                        {
+                            applied++;
+                        }
+                        else
+                        {
+                            skipped++; RecordReplaySkip(7115, line);
                         }
 
                         continue;
@@ -18974,10 +18989,31 @@ namespace SimsOnlineServerHost
             }
         }
 
+        internal static bool SkipLocalEnvironment
+        {
+            get { return sCurrentRole == "client" && !SacsRecorder.Replaying; }
+        }
+
         private static void EnsureServerSacsRecorder()
         {
             try
             {
+                if (SafeIsInWorld() && (sCurrentRole == "server" || sCurrentRole == "client"))
+                {
+                    if (!EnvironmentRecorder.Installed)
+                    {
+                        EnvironmentRecorder.Install();
+                    }
+                    if (sCurrentRole == "client" && !WorldRecorder.Installed)
+                    {
+                        WorldRecorder.Install();
+                    }
+                    if (sCurrentRole == "client")
+                    {
+                        EnvironmentReplay.HoldLocalLunarService();
+                    }
+                }
+
                 if (sCurrentRole != "server" || !SafeIsInWorld())
                 {
                     return;

@@ -1925,22 +1925,30 @@ namespace SimsOnlineServerHost
 
         public void SetLunarCycle(int moonCycle)
         {
+            if (ServerHostMain.SkipLocalEnvironment) return;
             mInner.SetLunarCycle(moonCycle);
+            EnvironmentRecorder.RecordWorld("SetLunarCycle", moonCycle);
         }
 
         public void SetLunarPhase(int moonPhase)
         {
+            if (ServerHostMain.SkipLocalEnvironment) return;
             mInner.SetLunarPhase(moonPhase);
+            EnvironmentRecorder.RecordWorld("SetLunarPhase", moonPhase);
         }
 
         public void ForceLunarCycle(int moonCycle)
         {
+            if (ServerHostMain.SkipLocalEnvironment) return;
             mInner.ForceLunarCycle(moonCycle);
+            EnvironmentRecorder.RecordWorld("ForceLunarCycle", moonCycle);
         }
 
         public void ForceLunarPhase(int moonPhase)
         {
+            if (ServerHostMain.SkipLocalEnvironment) return;
             mInner.ForceLunarPhase(moonPhase);
+            EnvironmentRecorder.RecordWorld("ForceLunarPhase", moonPhase);
         }
 
         public int GetLunarCycle()
@@ -1960,12 +1968,16 @@ namespace SimsOnlineServerHost
 
         public void SetLightingValues(int index)
         {
+            if (ServerHostMain.SkipLocalEnvironment) return;
             mInner.SetLightingValues(index);
+            EnvironmentRecorder.RecordWorld("SetLightingValues", index);
         }
 
         public void RandomizeCloudinessImmediately(float value)
         {
+            if (ServerHostMain.SkipLocalEnvironment) return;
             mInner.RandomizeCloudinessImmediately(value);
+            EnvironmentRecorder.RecordWorld("RandomizeCloudinessImmediately", value);
         }
 
         public bool HasAnySnowAtPoint(Vector3 worldPos)

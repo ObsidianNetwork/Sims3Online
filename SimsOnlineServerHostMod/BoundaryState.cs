@@ -106,6 +106,10 @@ namespace SimsOnlineServerHost
             for (LinkedListNode<KeyValuePair<string, string>> node = sOrder.First; node != null; node = node.Next)
             {
                 string key = node.Value.Key;
+                if (key.StartsWith("En|0|", StringComparison.Ordinal))
+                {
+                    continue;
+                }
                 int a = key.IndexOf('|');
                 int b = a < 0 ? -1 : key.IndexOf('|', a + 1);
                 string obj = b < 0 ? (a < 0 ? string.Empty : key.Substring(a + 1)) : key.Substring(a + 1, b - a - 1);
@@ -264,7 +268,7 @@ namespace SimsOnlineServerHost
                 ulong obj;
                 // A lot-keyed world call (Wl: floor features, holiday lights) is every game's: lots are not streamed targets.
                 if (f.Length > 1 && f[0] != "Ob" && ulong.TryParse(f[1], NumberStyles.None, CultureInfo.InvariantCulture, out obj)
-                    && (targets == null || f[0] == "Wl" || targets.ContainsKey(obj) || SacsRecorder.Props.ContainsKey(obj)))
+                    && (targets == null || f[0] == "Wl" || f[0] == "En" || targets.ContainsKey(obj) || SacsRecorder.Props.ContainsKey(obj)))
                 {
                     lines.Add("0|" + line);
                 }

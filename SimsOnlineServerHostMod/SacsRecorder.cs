@@ -745,7 +745,7 @@ namespace SimsOnlineServerHost
                 }
 
                 // A lot-keyed world call (Wl: floor features). Lots are few and every game has them all: always sent.
-                if (f[1] == "Wl")
+                if (f[1] == "Wl" || f[1] == "En")
                 {
                     lines.Add(line);
                     chars += line.Length + 1;
@@ -1507,6 +1507,7 @@ namespace SimsOnlineServerHost
         // oldest first (the dictionary's order is arbitrary once drivers come and go).
         internal static List<uint> SnapshotDrivers(Dictionary<ulong, bool> targets)
         {
+            EnvironmentRecorder.Capture();
             List<KeyValuePair<long, uint>> found = new List<KeyValuePair<long, uint>>();
             foreach (KeyValuePair<uint, Driver> entry in sDrivers)
             {

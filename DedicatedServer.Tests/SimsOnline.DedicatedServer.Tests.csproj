@@ -66,6 +66,7 @@
     <Compile Include="..\SimsOnlineServerHostMod\LineKindCounts.cs" Link="Linked\LineKindCounts.cs" />
     <!-- source-link where SET_WORLD_TIME moves the clock (nearest week, same minute left alone). -->
     <Compile Include="..\SimsOnlineServerHostMod\WorldClockSet.cs" Link="Linked\WorldClockSet.cs" />
+    <Compile Include="..\SimsOnlineServerHostMod\EnvironmentState.cs" Link="Linked\EnvironmentState.cs" />
     <!-- source-link the mod's select guard (a replay on the client never moves the player's selection). -->
     <Compile Include="..\SimsOnlineServerHostMod\SelectionGuard.cs" Link="Linked\SelectionGuard.cs" />
     <!-- part A: source-link the Iv inventory line (format, parse, diff). -->
