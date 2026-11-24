@@ -33,10 +33,13 @@ disconnected replays.
 ## How it works
 
 ```mermaid
-flowchart LR
-    C[Player game + SimsOnline.Client] -- input commands --> S[Host game + dedicated server]
-    S -- authoritative state --> C
-    S --> W[(Shared world)]
+flowchart TB
+    C["Player game + SimsOnline.Client"]
+    S["Host game + dedicated server"]
+    W[("Shared world")]
+    C -->|"input commands"| S
+    S -->|"authoritative state"| C
+    S --> W
 ```
 
 The host decides gameplay outcomes; clients mirror state and show the results. Read the
